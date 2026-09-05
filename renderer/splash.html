@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Eden's Crust Pizza - Loading</title>
+<link rel="icon" href="../logo.png" type="image/png">
+<link rel="shortcut icon" href="../logo.png" type="image/png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #070D1F;
+    color: #FFFFFF;
+    font-family: 'DM Sans', sans-serif;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    border: 1px solid rgba(255, 200, 0, 0.4);
+    border-radius: 16px;
+    background: radial-gradient(ellipse at 50% 30%, #0D1A3E 0%, #070D1F 75%);
+  }
+
+  .splash-container {
+    text-align: center;
+    padding: 2.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .logo-wrapper {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .logo-pulse {
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 200, 0, 0.5);
+    animation: pulse 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  }
+
+  .logo-img {
+    width: 110px;
+    height: 110px;
+    object-fit: contain;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.1rem;
+    color: #FFC800;
+    letter-spacing: 2.5px;
+    margin-bottom: 0.2rem;
+  }
+
+  .subtitle {
+    font-size: 0.75rem;
+    color: #FFD966;
+    letter-spacing: 3.5px;
+    text-transform: uppercase;
+    margin-bottom: 2rem;
+  }
+
+  .progress-container {
+    width: 260px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 0.8rem;
+    border: 1px solid rgba(255, 200, 0, 0.3);
+  }
+
+  .progress-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, #FFC800, #FFE57F);
+    box-shadow: 0 0 10px #FFC800;
+    border-radius: 10px;
+    animation: load 1.8s ease-in-out forwards;
+  }
+
+  .status-text {
+    font-size: 0.78rem;
+    color: #8B9CC7;
+    letter-spacing: 1px;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.4; }
+    50% { transform: scale(1.1); opacity: 0.9; }
+  }
+
+  @keyframes load {
+    0% { width: 0%; }
+    40% { width: 45%; }
+    80% { width: 85%; }
+    100% { width: 100%; }
+  }
+</style>
+</head>
+<body>
+  <div class="splash-container">
+    <div class="logo-wrapper">
+      <div class="logo-pulse"></div>
+      <img src="../logo.png" class="logo-img" alt="Eden's Crust Logo" onerror="this.style.display='none'">
+    </div>
+    <h1>EDEN'S CRUST</h1>
+    <div class="subtitle">Restaurant Management System</div>
+
+    <div class="progress-container">
+      <div class="progress-bar"></div>
+    </div>
+    <div class="status-text" id="status">Initializing SQLite Database...</div>
+  </div>
+
+  <script>
+    const statuses = [
+      'Initializing SQLite Database...',
+      'Loading Menu & Inventory...',
+      'Verifying POS & Table System...',
+      'Ready!'
+    ];
+    let i = 0;
+    setInterval(() => {
+      if (i < statuses.length - 1) {
+        i++;
+        document.getElementById('status').textContent = statuses[i];
+      }
+    }, 450);
+  </script>
+</body>
+</html>

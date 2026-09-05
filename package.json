@@ -1,0 +1,51 @@
+{
+  "name": "edens-crust-pizza-rms",
+  "productName": "Eden's Crust Pizza",
+  "version": "1.0.0",
+  "description": "Eden's Crust Pizza Restaurant Management System",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1"
+  },
+  "build": {
+    "appId": "com.edenscrust.pizza.rms",
+    "productName": "Eden's Crust Pizza",
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!*.jpeg",
+      "!*.ipynb",
+      "!remove_logo_bg.py",
+      "!process_logo.ps1",
+      "!scratch_*",
+      "!.claude/**",
+      "!dist/**"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
