@@ -1339,7 +1339,7 @@ function renderWaiter(){
         <span style="position:absolute;left:.7rem;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none">🔍</span>
         <span id="menu-search-clear" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);color:var(--text2);cursor:pointer;font-size:.9rem;display:${menuSearchQuery?'inline':'none'}" onclick="setMenuSearch('')">✕</span>
       </div>
-      <div class="cat-tabs">${['All',...menuCategories].map(c=>`<div class="cat-tab${activeMenuCat===c?' active':''}" onclick="filterWaiterMenu('${c}')">${c}</div>`).join('')}</div>
+      <div class="cat-tabs">${['All',...menuCategories,'Deals'].map(c=>`<div class="cat-tab${activeMenuCat===c?' active':''}" onclick="filterWaiterMenu('${c}')">${c}</div>`).join('')}</div>
       <div class="menu-grid" id="menu-grid">${renderMenuGridItems()}</div>
     </div>
     <div class="cart-panel">
@@ -1445,18 +1445,64 @@ function selectTable(id){
 }
 function filterWaiterMenu(cat){activeMenuCat=cat;showSection('orders');}
 
+function addDealToCart(dealId) {
+  const deal = deals.find(d => String(d.id) === String(dealId));
+  if (!deal) return;
+  if (orderType === 'Dine-in' && !selectedTable) {
+    toast('Select a table first!', 'error');
+    return;
+  }
+  const displayName = `🎉 ${deal.name}`;
+  const finalPrice = Number(deal.price);
+
+  const existing = cart.find(c => c.name === displayName);
+  if (existing) {
+    existing.qty++;
+  } else {
+    cart.push({
+      name: displayName,
+      qty: 1,
+      price: finalPrice,
+      desc: deal.items ? deal.items.join(' + ') : ''
+    });
+  }
+  toast(`Added ${deal.name} to cart ✓`);
+  showSection('orders');
+}
+
 // Item cards for the Take Order menu grid — pulled out of renderWaiter() so
 // setMenuSearch() can refresh just this grid on every keystroke without a
 // full section re-render (which would reset the search input's focus/cursor).
 function renderMenuGridItems(){
-  const q=menuSearchQuery.trim().toLowerCase();
-  const list=menuItems.filter(i=>{
-    if(!i.available)return false;
-    if(q)return i.name.toLowerCase().includes(q)||i.cat.toLowerCase().includes(q);
-    return activeMenuCat==='All'||i.cat===activeMenuCat;
-  });
-  if(list.length===0)return `<p style="color:var(--text3);font-size:.85rem;text-align:center;grid-column:1/-1;padding:2rem 0">No items match "${menuSearchQuery}"</p>`;
-  return list.map(i=>`
+  const q = menuSearchQuery.trim().toLowerCase();
+
+  let itemsList = [];
+  let dealsList = [];
+
+  if (activeMenuCat === 'All' || activeMenuCat !== 'Deals') {
+    itemsList = menuItems.filter(i => {
+      if (!i.available) return false;
+      if (q) return i.name.toLowerCase().includes(q) || i.cat.toLowerCase().includes(q);
+      return activeMenuCat === 'All' || i.cat === activeMenuCat;
+    });
+  }
+
+  if (activeMenuCat === 'All' || activeMenuCat === 'Deals') {
+    dealsList = deals.filter(d => {
+      if (d.available === false) return false;
+      if (q) return d.name.toLowerCase().includes(q) || (d.category && d.category.toLowerCase().includes(q)) || (d.items && d.items.join(' ').toLowerCase().includes(q));
+      return true;
+    });
+  }
+
+  if (itemsList.length === 0 && dealsList.length === 0) {
+    return `<p style="color:var(--text3);font-size:.85rem;text-align:center;grid-column:1/-1;padding:2rem 0">No items match "${menuSearchQuery}"</p>`;
+  }
+
+  let html = '';
+
+  // Render Menu Items
+  html += itemsList.map(i => `
     <div class="menu-item" onclick="addToCart(${i.id})" style="cursor:pointer">
       <div class="menu-img" style="${i.img&&i.img.startsWith('data:')?`background-image:url(${i.img});background-size:cover;background-position:center;`:''}">${i.img&&i.img.startsWith('data:')?'':`<span style="font-size:2.5rem">${i.img}</span>`}${i.imgEmoji&&i.img.startsWith('data:')?`<span style="position:absolute;bottom:4px;left:6px;font-size:1.2rem">${i.imgEmoji}</span>`:``}${i.discount?`<span class="discount-badge">SALE</span>`:''}</div>
       <div class="menu-info">
@@ -1465,6 +1511,20 @@ function renderMenuGridItems(){
         <div class="menu-price"><span class="price-main">${i.variants&&i.variants.length?'From Rs '+Math.min(...i.variants.map(v=>v.price)).toLocaleString():((i.discount||i.price)?'Rs '+(i.discount||i.price).toLocaleString():'Ask for price')}</span>${i.discount?`<span class="price-old">Rs ${i.price}</span>`:''}</div>
       </div>
     </div>`).join('');
+
+  // Render Deals
+  html += dealsList.map(d => `
+    <div class="menu-item" onclick="addDealToCart(${d.id})" style="cursor:pointer;border-color:var(--gold);background:rgba(255,200,0,0.03)">
+      <div class="menu-img"><span style="font-size:2.5rem">🎉</span></div>
+      <div class="menu-info">
+        <div class="menu-name" style="color:var(--gold);font-weight:700">${d.name}</div>
+        <div class="menu-cat">${d.category || 'Midnight Deals'}</div>
+        <div style="font-size:.72rem;color:var(--text2);margin-top:.2rem">${d.items ? d.items.join(' + ') : ''}</div>
+        <div class="menu-price" style="margin-top:.4rem"><span class="price-main">Rs ${d.price.toLocaleString()}</span></div>
+      </div>
+    </div>`).join('');
+
+  return html;
 }
 function setMenuSearch(val){
   menuSearchQuery=val;
