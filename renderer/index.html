@@ -744,7 +744,6 @@ function renderMenu(){
     <div style="display:flex;gap:.5rem;flex-wrap:wrap">
       <button class="print-btn" onclick="openAddItem()">+ Add Item</button>
       <button class="print-btn" onclick="openAddCategory()">+ Category</button>
-      <button class="print-btn" style="background:rgba(232,69,69,.15);color:var(--red);border-color:var(--red)" onclick="clearEntireMenu()">🗑️ Clear Entire Menu</button>
     </div>
   </div>
   <div class="cat-tabs">
@@ -3979,44 +3978,10 @@ function openCloudConfigModal() {
       <div style="display:flex;gap:.5rem;margin-top:1.5rem;flex-wrap:wrap">
         <button class="btn" style="flex:1" onclick="saveCloudConfig()">💾 Save & Connect</button>
         <button class="btn" style="background:var(--surface2);color:var(--text1);border:1px solid var(--border);flex:1" onclick="pushAllDataToCloud()">⬆️ Push Local → Cloud</button>
-        <button class="btn" style="background:rgba(232,69,69,0.2);color:var(--red);border:1px solid var(--red);flex:1" onclick="clearEntireMenu()">🗑️ Wipe Menu Data</button>
         <button class="btn" style="background:var(--surface2);color:var(--text1);border:1px solid var(--border);flex:1" onclick="closeModal()">Close</button>
       </div>
     </div>
   `);
-}
-
-async function clearEntireMenu() {
-  if (!confirm('⚠️ Are you sure you want to delete ALL menu items, categories, and deals from both Cloud & Local storage? This cannot be undone.')) return;
-  try {
-    menuItems = [];
-    menuCategories = [];
-    deals = [];
-
-    localStorage.removeItem('hfc_web_menu_items');
-    localStorage.removeItem('hfc_web_menu_cats');
-    localStorage.removeItem('hfc_web_deals');
-
-    if (window.api && window.api.saveMenuItems) {
-      await Promise.all([
-        window.api.saveMenuItems([]),
-        window.api.saveMenuCategories([]),
-        window.api.saveDeals([]),
-      ]);
-    }
-
-    if (supabaseClient) {
-      await supabaseClient.from('menu_items').delete().gte('id', 0);
-      await supabaseClient.from('menu_categories').delete().gte('id', 0);
-      await supabaseClient.from('deals').delete().gte('id', 0);
-    }
-
-    showToast('🗑️ Entire Menu deleted from Cloud & Local DB!', 'success');
-    if (typeof showSection === 'function') showSection('menu');
-  } catch(e) {
-    console.error('Clear menu error:', e);
-    showToast('Failed to delete menu', 'error');
-  }
 }
 
 async function saveCloudConfig() {
