@@ -7,6 +7,7 @@
 <link rel="icon" href="../logo.png" type="image/png">
 <link rel="shortcut icon" href="../logo.png" type="image/png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
 
@@ -329,6 +330,7 @@ tr:hover td{background:rgba(201,168,76,.04)}
         <span id="user-display">Admin</span>
         <span class="user-role" id="role-display">admin</span>
       </div>
+      <button class="icon-btn" id="btn-cloud-sync" onclick="openCloudConfigModal()" title="Cloud Database Synchronization Settings" style="border-color:var(--gold)">☁️ Cloud DB</button>
       <button class="icon-btn" id="btn-printer-settings" onclick="openPrinterSettings()" title="Thermal Receipt Printer Settings">🖨 Printer</button>
       <button class="icon-btn" id="btn-db-backup" onclick="performDbBackup()" title="Backup Database File">💾 Backup Data</button>
       <button class="icon-btn" id="btn-change-pwd" onclick="openChangePassword()" style="display:none">🔑 Password</button>
@@ -571,131 +573,9 @@ const TABS = {
 // State
 let orders = [];
 let tables = [];
-let menuCategories = [
-  'Eden Special Pizzas',
-  'Eden Loaded Pizza',
-  'Crust Pizza',
-  "Eden's Traditional Stuff Pizza",
-  'Burgers',
-  'Wraps',
-  'Baked Wings',
-  'Fries',
-  'Pasta',
-  'Injected Roast Chicken',
-  'Water & Cold Drinks',
-  'Sauces & Extras'
-];
-
-let menuItems = [
-  // ── Eden Special Pizzas ──
-  { id: 1, name: "Eden's Special Pizza", cat: 'Eden Special Pizzas', price: 650, discount: 0, desc: 'Special sauce, loaded chicken, veggies & extra mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1250},{label:'Large',price:1650},{label:'Family',price:2350}] },
-  { id: 2, name: 'Pepperoni Special Pizza', cat: 'Eden Special Pizzas', price: 650, discount: 0, desc: 'Italian red sauce, extra mozzarella cheese & premium pepperoni slices', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1250},{label:'Large',price:1650},{label:'Family',price:2350}] },
-  { id: 3, name: 'Deep Dish Special Pizza', cat: 'Eden Special Pizzas', price: 650, discount: 0, desc: 'Deep dish style layered with cheese, chicken tikka & special herbs', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1250},{label:'Large',price:1650},{label:'Family',price:2350}] },
-  { id: 4, name: 'Prestigious Special Pizza', cat: 'Eden Special Pizzas', price: 650, discount: 0, desc: 'Chef signature sauce, smoked chicken, mushrooms, olives & sausages', img: '🍕', available: true, variants: [{label:'Small',price:650},{label:'Medium',price:1250},{label:'Large',price:1650},{label:'Family',price:2350}] },
-
-  // ── Eden Loaded Pizza ──
-  { id: 5, name: 'Peri-Peri Pizza', cat: 'Eden Loaded Pizza', price: 600, discount: 0, desc: 'Loaded, filled crust edge with spicy Peri-Peri chicken & jalapenos', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1200},{label:'Large',price:1550},{label:'Family',price:2250}] },
-  { id: 6, name: 'Chicken BBQ Pizza', cat: 'Eden Loaded Pizza', price: 600, discount: 0, desc: 'Smokey BBQ sauce, grilled chicken, onions & mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1200},{label:'Large',price:1550},{label:'Family',price:2250}] },
-  { id: 7, name: 'Chicken Fajita Pizza', cat: 'Eden Loaded Pizza', price: 600, discount: 0, desc: 'Fajita seasoned chicken, capsicum, onions & rich cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1200},{label:'Large',price:1550},{label:'Family',price:2250}] },
-  { id: 8, name: 'Chicken Tikka Pizza', cat: 'Eden Loaded Pizza', price: 600, discount: 0, desc: 'Traditional tikka chicken, onions & mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1200},{label:'Large',price:1550},{label:'Family',price:2250}] },
-  { id: 9, name: 'Chicken Supreme Pizza', cat: 'Eden Loaded Pizza', price: 600, discount: 0, desc: 'Supreme mix of tikka & fajita chicken, olives, mushrooms & cheese', img: '🍕', available: true, variants: [{label:'Small',price:600},{label:'Medium',price:1200},{label:'Large',price:1550},{label:'Family',price:2250}] },
-
-  // ── Crust Pizza ──
-  { id: 10, name: 'Crown Crust Pizza', cat: 'Crust Pizza', price: 700, discount: 0, desc: 'Golden crown stuffed crust pockets filled with chicken & cheese', img: '🍕', available: true, variants: [{label:'Small',price:700},{label:'Medium',price:1350},{label:'Large',price:1800},{label:'Family',price:2500}] },
-  { id: 11, name: 'Kebab Crust Pizza', cat: 'Crust Pizza', price: 700, discount: 0, desc: 'Crust ring stuffed with juicy seekh kebab slices & mozzarella', img: '🍕', available: true, variants: [{label:'Small',price:700},{label:'Medium',price:1350},{label:'Large',price:1800},{label:'Family',price:2500}] },
-  { id: 12, name: 'Royal Kebab Crust Pizza', cat: 'Crust Pizza', price: 700, discount: 0, desc: 'Royal style stuffed kebab crust topped with special sauces', img: '🍕', available: true, variants: [{label:'Small',price:700},{label:'Medium',price:1350},{label:'Large',price:1800},{label:'Family',price:2500}] },
-
-  // ── Eden's Traditional Stuff Pizza ──
-  { id: 13, name: 'Bihari Kebab Pizza', cat: "Eden's Traditional Stuff Pizza", price: 550, discount: 0, desc: 'Spicy Bihari kebab chunks, onions & mozzarella cheese', img: '🍕', available: true, variants: [{label:'Small',price:550},{label:'Medium',price:1100},{label:'Large',price:1450},{label:'Family',price:2150}] },
-  { id: 14, name: 'Malai Pizza', cat: "Eden's Traditional Stuff Pizza", price: 550, discount: 0, desc: 'Creamy malai boti chicken, capsicum & cheese melt', img: '🍕', available: true, variants: [{label:'Small',price:550},{label:'Medium',price:1100},{label:'Large',price:1450},{label:'Family',price:2150}] },
-  { id: 15, name: 'Veg Lover Pizza', cat: "Eden's Traditional Stuff Pizza", price: 550, discount: 0, desc: 'Fresh capsicum, onions, mushrooms, olives & sweet corn', img: '🍕', available: true, variants: [{label:'Small',price:550},{label:'Medium',price:1100},{label:'Large',price:1450},{label:'Family',price:2150}] },
-  { id: 16, name: 'Bonfire Pizza', cat: "Eden's Traditional Stuff Pizza", price: 550, discount: 0, desc: 'Hot bonfire sauce, fajita chicken, jalapenos & tomatoes', img: '🍕', available: true, variants: [{label:'Small',price:550},{label:'Medium',price:1100},{label:'Large',price:1450},{label:'Family',price:2150}] },
-  { id: 17, name: 'Chicken Tandoori Pizza', cat: "Eden's Traditional Stuff Pizza", price: 550, discount: 0, desc: 'Tandoori marinated chicken boti, onions & mozzarella', img: '🍕', available: true, variants: [{label:'Small',price:550},{label:'Medium',price:1100},{label:'Large',price:1450},{label:'Family',price:2150}] },
-  { id: 18, name: 'Chicken Achari Pizza', cat: "Eden's Traditional Stuff Pizza", price: 550, discount: 0, desc: 'Pickled achari chicken flavor with capsicum & olives', img: '🍕', available: true, variants: [{label:'Small',price:550},{label:'Medium',price:1100},{label:'Large',price:1450},{label:'Family',price:2150}] },
-
-  // ── Burgers ──
-  { id: 19, name: 'Zinger Burger', cat: 'Burgers', price: 350, discount: 0, desc: 'Crispy zinger fillet with secret sauce & fresh lettuce', img: '🍔', available: true, variants: [] },
-  { id: 20, name: 'Special Burger', cat: 'Burgers', price: 400, discount: 0, desc: 'Eden special loaded chicken patty burger', img: '🍔', available: true, variants: [] },
-  { id: 21, name: 'Chicken Patty Burger', cat: 'Burgers', price: 300, discount: 0, desc: 'Juicy chicken patty with creamy mayo sauce', img: '🍔', available: true, variants: [] },
-  { id: 22, name: 'Dbble Burger', cat: 'Burgers', price: 600, discount: 0, desc: 'Double patty & double cheese melt burger', img: '🍔', available: true, variants: [] },
-  { id: 23, name: 'BBQ Grilled Patty Burger', cat: 'Burgers', price: 500, discount: 0, desc: 'Smokey grilled patty with BBQ sauce', img: '🍔', available: true, variants: [] },
-  { id: 24, name: 'Fillet Burger', cat: 'Burgers', price: 550, discount: 0, desc: 'Tender chicken fillet burger with salad', img: '🍔', available: true, variants: [] },
-  { id: 25, name: 'Afghani Burger', cat: 'Burgers', price: 450, discount: 0, desc: 'Traditional Afghani style spicy burger', img: '🍔', available: true, variants: [] },
-  { id: 26, name: 'Grill Burger', cat: 'Burgers', price: 550, discount: 0, desc: 'Flame grilled chicken burger', img: '🍔', available: true, variants: [] },
-  { id: 27, name: 'Cadem Grill Burger', cat: 'Burgers', price: 600, discount: 0, desc: 'Special Cadem style grilled burger', img: '🍔', available: true, variants: [] },
-
-  // ── Wraps ──
-  { id: 28, name: 'Turkish Wrap', cat: 'Wraps', price: 380, discount: 0, desc: 'Turkish spiced chicken wrap with fresh salad', img: '🌯', available: true, variants: [] },
-  { id: 29, name: 'Special Wrap', cat: 'Wraps', price: 420, discount: 0, desc: 'Eden special loaded wrap with sauce', img: '🌯', available: true, variants: [] },
-  { id: 30, name: 'Arabic Wrap', cat: 'Wraps', price: 400, discount: 0, desc: 'Arabic style chicken wrap with garlic mayo', img: '🌯', available: true, variants: [] },
-  { id: 31, name: 'Zinger Wrap', cat: 'Wraps', price: 350, discount: 0, desc: 'Crispy zinger strips wrapped in paratha/tortilla', img: '🌯', available: true, variants: [] },
-  { id: 32, name: 'Fillet Wrap', cat: 'Wraps', price: 380, discount: 0, desc: 'Grilled fillet strips wrap with special sauce', img: '🌯', available: true, variants: [] },
-
-  // ── Baked Wings ──
-  { id: 33, name: 'Peri-Peri Wings', cat: 'Baked Wings', price: 350, discount: 0, desc: 'Spicy oven baked Peri-Peri wings', img: '🍗', available: true, variants: [{label:'5 Pcs',price:350},{label:'10 Pcs',price:650}] },
-  { id: 34, name: 'BBQ Wings', cat: 'Baked Wings', price: 350, discount: 0, desc: 'Smokey BBQ glazed oven baked wings', img: '🍗', available: true, variants: [{label:'5 Pcs',price:350},{label:'10 Pcs',price:650}] },
-  { id: 35, name: 'Grilled Wings', cat: 'Baked Wings', price: 350, discount: 0, desc: 'Flame grilled seasoned wings', img: '🍗', available: true, variants: [{label:'5 Pcs',price:350},{label:'10 Pcs',price:650}] },
-  { id: 36, name: 'Crispy Wings', cat: 'Baked Wings', price: 350, discount: 0, desc: 'Golden crispy fried wings', img: '🍗', available: true, variants: [{label:'5 Pcs',price:350},{label:'10 Pcs',price:650}] },
-
-  // ── Fries ──
-  { id: 37, name: 'French Fries', cat: 'Fries', price: 200, discount: 0, desc: 'Crispy golden french fries', img: '🍟', available: true, variants: [] },
-  { id: 38, name: 'Family Fries', cat: 'Fries', price: 300, discount: 0, desc: 'Large jumbo family portion fries', img: '🍟', available: true, variants: [] },
-  { id: 39, name: 'Regular Fries', cat: 'Fries', price: 200, discount: 0, desc: 'Regular salted fries', img: '🍟', available: true, variants: [] },
-  { id: 40, name: 'Loaded Fries', cat: 'Fries', price: 400, discount: 0, desc: 'Fries loaded with chicken chunks, cheese & sauces', img: '🍟', available: true, variants: [] },
-  { id: 41, name: 'Medium Fries', cat: 'Fries', price: 300, discount: 0, desc: 'Medium size seasoned fries', img: '🍟', available: true, variants: [] },
-  { id: 42, name: 'Cheese Fries', cat: 'Fries', price: 450, discount: 0, desc: 'Fries topped with hot melted cheese sauce', img: '🍟', available: true, variants: [] },
-
-  // ── Pasta ──
-  { id: 43, name: 'Creamy Pasta', cat: 'Pasta', price: 400, discount: 0, desc: 'Rich creamy white alfredo sauce pasta', img: '🍝', available: true, variants: [{label:'Half',price:400},{label:'Full',price:800}] },
-  { id: 44, name: 'Special Pasta', cat: 'Pasta', price: 500, discount: 0, desc: 'Eden special loaded cheese pasta', img: '🍝', available: true, variants: [{label:'Half',price:500},{label:'Full',price:1000}] },
-  { id: 45, name: 'Flaming Pasta', cat: 'Pasta', price: 400, discount: 0, desc: 'Spicy red flaming sauce pasta', img: '🍝', available: true, variants: [{label:'Half',price:400},{label:'Full',price:800}] },
-  { id: 46, name: 'Crunchy Pasta', cat: 'Pasta', price: 400, discount: 0, desc: 'Pasta topped with crispy chicken crunch', img: '🍝', available: true, variants: [{label:'Half',price:400},{label:'Full',price:800}] },
-
-  // ── Injected Roast Chicken ──
-  { id: 47, name: 'Injected Roast Chicken (Quarter)', cat: 'Injected Roast Chicken', price: 600, discount: 0, desc: 'Juicy tender injected roast chicken - Quarter portion', img: '🍗', available: true, variants: [] },
-  { id: 48, name: 'Injected Roast Chicken (Half)', cat: 'Injected Roast Chicken', price: 900, discount: 0, desc: 'Juicy tender injected roast chicken - Half portion', img: '🍗', available: true, variants: [] },
-  { id: 49, name: 'Injected Roast Chicken (Full)', cat: 'Injected Roast Chicken', price: 1750, discount: 0, desc: 'Juicy tender injected roast chicken - Full portion', img: '🍗', available: true, variants: [] },
-
-  // ── Water & Cold Drinks ──
-  { id: 50, name: 'Small Water', cat: 'Water & Cold Drinks', price: 50, discount: 0, desc: '500ml Mineral Water', img: '💧', available: true, variants: [] },
-  { id: 51, name: 'Large Water', cat: 'Water & Cold Drinks', price: 100, discount: 0, desc: '1.5L Mineral Water', img: '💧', available: true, variants: [] },
-  { id: 52, name: 'Drink (350ml)', cat: 'Water & Cold Drinks', price: 80, discount: 0, desc: '350ml Chilled Beverage Bottle/Can', img: '🥤', available: true, variants: [] },
-  { id: 53, name: 'Drink (1 Liter)', cat: 'Water & Cold Drinks', price: 170, discount: 0, desc: '1 Liter Bottle', img: '🥤', available: true, variants: [] },
-  { id: 54, name: 'Drink (1.5 Liter)', cat: 'Water & Cold Drinks', price: 200, discount: 0, desc: '1.5 Liter Bottle', img: '🥤', available: true, variants: [] },
-  { id: 55, name: 'Drink (2.25 Liter)', cat: 'Water & Cold Drinks', price: 280, discount: 0, desc: '2.25 Liter Bottle', img: '🥤', available: true, variants: [] },
-
-  // ── Sauces & Extras ──
-  { id: 56, name: 'Dip Sauce', cat: 'Sauces & Extras', price: 50, discount: 0, desc: 'Signature dip sauce', img: '🥣', available: true, variants: [] },
-  { id: 57, name: 'Mayo', cat: 'Sauces & Extras', price: 50, discount: 0, desc: 'Garlic mayo sauce', img: '🥣', available: true, variants: [] },
-  { id: 58, name: 'Peri-Peri Sauce', cat: 'Sauces & Extras', price: 50, discount: 0, desc: 'Spicy peri-peri dip sauce', img: '🥣', available: true, variants: [] },
-  { id: 59, name: 'Extra Chicken Topping', cat: 'Sauces & Extras', price: 200, discount: 0, desc: 'Extra chicken topping for pizza/burger', img: '🥣', available: true, variants: [] },
-  { id: 60, name: 'Extra Cheese', cat: 'Sauces & Extras', price: 200, discount: 0, desc: 'Extra melted mozzarella cheese topping', img: '🥣', available: true, variants: [] }
-];
-
-let deals = [
-  { id: 1, name: 'Deal 1', category: 'Midnight Deals', price: 1420, available: true, items: ['1 Large Pizza (Fajita + Tikka only)', '1 L Drink'] },
-  { id: 2, name: 'Deal 2', category: 'Midnight Deals', price: 1250, available: true, items: ["1 Medium Eden's Special Pizza", '1x 350ml Drink'] },
-  { id: 3, name: 'Deal 3', category: 'Midnight Deals', price: 2700, available: true, items: ['2 Large Pizzas (Fajita + Tikka)', '1.5L Drink'] },
-  { id: 4, name: 'Deal 4', category: 'Midnight Deals', price: 1120, available: true, items: ['2 Small Pizza (Fajita + Tikka)', '2x 350ml Drink'] },
-  { id: 5, name: 'Deal 5', category: 'Midnight Deals', price: 2120, available: true, items: ['2 Medium Pizza (Fajita + Tikka)', '1 L Drink'] },
-  { id: 6, name: 'Deal 6', category: 'Midnight Deals', price: 4000, available: true, items: ['3 Large Pizzas (Fajita + Tikka)', '1.5L Drink'] },
-  { id: 7, name: 'Deal 7', category: 'Midnight Deals', price: 2400, available: true, items: ['1 Large Pizza', '1 Zinger Burger', '1.5L Drink', '1 Large Fries'] },
-  { id: 8, name: 'Deal 8', category: 'Midnight Deals', price: 2100, available: true, items: ['1 Large Pizza', '1 Zinger Burger', '5 Wings', '1.5L Drink'] },
-  { id: 9, name: "Eden's Special Deal", category: 'Midnight Deals', price: 1650, available: true, items: ['1 Large Pizza (all 5 loaded Flavors)', '1.5L Drink'] },
-  { id: 10, name: 'Deal 10 — Birthday Deal', category: 'Midnight Deals', price: 6450, available: true, items: ['2 Large Pizzas', '10 Wings', '6 Zinger Burgers', 'Family Fries', '1.5L Drink', '1 Cake'] },
-  { id: 11, name: 'Deal 11', category: 'Midnight Deals', price: 570, available: true, items: ['1 Zinger Burger', 'Regular Fries', '1x 350ml Drink'] },
-  { id: 12, name: 'Deal 12', category: 'Midnight Deals', price: 950, available: true, items: ['2 Zinger Burgers', 'Regular Fries', '2x 350ml Drink'] },
-  { id: 13, name: 'Deal 13', category: 'Midnight Deals', price: 620, available: true, items: ['1 Zinger Burger', 'Wings 5 Pieces', '1x 350ml Drink'] },
-  { id: 14, name: 'Deal 14', category: 'Midnight Deals', price: 1500, available: true, items: ['4 Zinger Burgers', '1x 350ml Drink'] },
-  { id: 15, name: 'Deal 15', category: 'Midnight Deals', price: 2150, available: true, items: ['5 Zinger Burgers', '1 Large Fries', '1.5L Drink'] },
-  { id: 16, name: 'Deal 16', category: 'Midnight Deals', price: 1050, available: true, items: ['1 Chicken Broast Roll', '1 Drink'] },
-  { id: 17, name: 'Deal 17', category: 'Midnight Deals', price: 550, available: true, items: ['1 Special Pasta (Small)', '1x 350ml Drink'] },
-  { id: 18, name: 'Deal 18', category: 'Midnight Deals', price: 700, available: true, items: ['5 Crispy Wings', '5 Nuggets', '2x 350ml Drink'] },
-  { id: 19, name: 'Deal 19', category: 'Midnight Deals', price: 430, available: true, items: ['1 Turkish Wrap', '1x 350ml Drink'] },
-  { id: 20, name: 'Deal 20', category: 'Midnight Deals', price: 630, available: true, items: ['10 Hot Shots', 'Regular Fries', '1x 350ml Drink'] },
-  { id: 21, name: 'Deal 21', category: 'Midnight Deals', price: 420, available: true, items: ['1 Loaded Fries (Small)', '1x 350ml Drink'] },
-  { id: 22, name: 'Deal 22', category: 'Midnight Deals', price: 380, available: true, items: ['5 Grilled Wings', '1x 350ml Drink'] }
-];
+let menuCategories = [];
+let menuItems = [];
+let deals = [];
 let inventory = [];
 let employees = [];
 let activeEmpTab = 'list';
@@ -861,9 +741,10 @@ function renderMenu(){
   return `
   <div class="section-header">
     <div><div class="section-title">Menu & Categories</div><div class="section-sub">${menuItems.length} items across ${menuCategories.length} categories · ${deals.length} deals</div></div>
-    <div style="display:flex;gap:.5rem">
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
       <button class="print-btn" onclick="openAddItem()">+ Add Item</button>
       <button class="print-btn" onclick="openAddCategory()">+ Category</button>
+      <button class="print-btn" style="background:rgba(232,69,69,.15);color:var(--red);border-color:var(--red)" onclick="clearEntireMenu()">🗑️ Clear Entire Menu</button>
     </div>
   </div>
   <div class="cat-tabs">
@@ -873,6 +754,7 @@ function renderMenu(){
 }
 
 function renderMenuGrid(){
+  const filtered = menuItems.filter(i=>activeMenuCat==='All'||i.cat===activeMenuCat);
   return `
   ${currentRole==='Admin'?`
   <div class="card card-gold" style="margin-bottom:1.25rem">
@@ -891,8 +773,16 @@ function renderMenuGrid(){
     </div>
     <div style="margin-top:.75rem;font-size:.78rem;color:var(--text3)">Total: <strong style="color:var(--gold)">${tables.length} tables</strong> · Available: <strong style="color:var(--green)">${tables.filter(t=>t.status==='available').length}</strong> · Occupied: <strong style="color:var(--red)">${tables.filter(t=>t.status==='occupied').length}</strong> · Reserved: <strong style="color:var(--amber)">${tables.filter(t=>t.status==='reserved').length}</strong></div>
   </div>`:''}
+  
+  ${filtered.length === 0 ? `
+  <div style="text-align:center;padding:3rem 1rem;background:var(--surface);border:1px dashed var(--border);border-radius:var(--radius);margin-top:1rem">
+    <div style="font-size:3rem;margin-bottom:1rem">📋</div>
+    <h3 style="color:var(--gold);margin-bottom:.5rem">No Menu Items Found</h3>
+    <p style="color:var(--text2);font-size:.85rem;margin-bottom:1.5rem">Your menu database is empty. Click "+ Add Item" or "+ Category" to add your new menu.</p>
+    <button class="btn" style="width:auto;padding:.6rem 1.5rem;display:inline-block" onclick="openAddItem()">+ Add First Item</button>
+  </div>` : `
   <div class="menu-grid">
-    ${menuItems.filter(i=>activeMenuCat==='All'||i.cat===activeMenuCat).map(i=>`
+    ${filtered.map(i=>`
       <div class="menu-item" id="mi-${i.id}">
         <div class="menu-img" style="${i.img&&i.img.startsWith('data:')?`background-image:url(${i.img});background-size:cover;background-position:center;`:''}">${i.img&&i.img.startsWith('data:')?'':`<span style="font-size:2.5rem">${i.img}</span>`}${i.imgEmoji&&i.img.startsWith('data:')?`<span style="position:absolute;bottom:4px;left:6px;font-size:1.3rem;line-height:1">${i.imgEmoji}</span>`:``}${i.discount?`<span class="discount-badge">SALE</span>`:''}</div>
         <div class="menu-info">
@@ -918,7 +808,7 @@ function renderMenuGrid(){
           </div>
         </div>
       </div>`).join('')}
-  </div>`;
+  </div>`}`;
 }
 
 function renderDeals(){
@@ -3795,29 +3685,65 @@ function addSectionListeners(sec){
 
 let supabaseClient = null;
 
+function updateCloudBadge(isConnected) {
+  const btn = document.getElementById('btn-cloud-sync');
+  if (!btn) return;
+  if (isConnected) {
+    btn.innerHTML = '☁️ Cloud DB <span style="color:#10B981;font-weight:bold">🟢 Live</span>';
+    btn.title = 'Supabase Cloud DB Connected & Syncing Live across Mobile & PC';
+    btn.style.borderColor = '#10B981';
+  } else {
+    btn.innerHTML = '☁️ Cloud DB <span style="color:#FF3B30;font-weight:bold">🔴 Setup</span>';
+    btn.title = 'Click to connect Supabase Cloud DB for Cross-Device Syncing';
+    btn.style.borderColor = '#FF3B30';
+  }
+}
+
 function initSupabaseFromStorage() {
   const url = localStorage.getItem('hfc_supabase_url') || window.SUPABASE_URL || '';
   const key = localStorage.getItem('hfc_supabase_key') || window.SUPABASE_KEY || '';
-  if (window.supabase && url && key) {
+  if (window.supabase && url && key && url.includes('supabase.co')) {
     try {
       supabaseClient = window.supabase.createClient(url, key);
       console.log('⚡ Supabase Cloud Database Client Connected ✓');
       setupRealtimeSubscriptions();
+      updateCloudBadge(true);
       return true;
     } catch(e) { console.warn('Supabase init failed:', e); }
   }
+  updateCloudBadge(false);
   return false;
 }
 
 function setupRealtimeSubscriptions() {
   if (!supabaseClient) return;
-  supabaseClient
-    .channel('hfc-orders-realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-      console.log('🔔 Live Order change received from Cloud DB');
-      loadFromLocal();
-    })
-    .subscribe();
+  try {
+    supabaseClient
+      .channel('hfc-all-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
+        console.log('🔔 Live Order change received from Cloud DB');
+        await loadFromLocal();
+        if (typeof renderOrders === 'function') renderOrders();
+        if (typeof renderTables === 'function') renderTables();
+        if (typeof updateStats === 'function') updateStats();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, async () => {
+        console.log('🔔 Live Table change received from Cloud DB');
+        await loadFromLocal();
+        if (typeof renderTables === 'function') renderTables();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'unpaid_bills' }, async () => {
+        console.log('🔔 Live Unpaid Bills change received from Cloud DB');
+        await loadFromLocal();
+        if (typeof renderTables === 'function') renderTables();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, async () => {
+        console.log('🔔 Live Menu Item change received from Cloud DB');
+        await loadFromLocal();
+        if (typeof renderMenu === 'function') renderMenu();
+      })
+      .subscribe();
+  } catch(e) { console.warn('Realtime subscription error:', e); }
 }
 
 function updateMobileNav(el) {
@@ -3848,8 +3774,9 @@ async function saveToLocal() {
 
     // 2. Supabase Cloud DB (Web app mode)
     if (supabaseClient) {
-      for (const o of orders) {
-        await supabaseClient.from('orders').upsert({
+      // Orders
+      if (orders && orders.length > 0) {
+        const orderRecords = orders.map(o => ({
           id: String(o.id),
           table_id: o.table ?? null,
           items: o.items || [],
@@ -3862,9 +3789,38 @@ async function saveToLocal() {
           order_type: o.orderType || 'Dine-in',
           customer_phone: o.customerPhone || '',
           customer_address: o.customerAddress || '',
-        });
+        }));
+        await supabaseClient.from('orders').upsert(orderRecords);
       }
-      console.log('☁️ Synced orders to Supabase Cloud Database');
+
+      // Tables
+      if (tables && tables.length > 0) {
+        const tableRecords = tables.map(t => ({
+          id: t.id,
+          status: t.status || 'available',
+          persons: t.persons || 0,
+          seats: t.seats || 4,
+          reserved_for: t.reservedFor || '',
+          reserved_time: t.reservedTime || '',
+        }));
+        await supabaseClient.from('tables').upsert(tableRecords);
+      }
+
+      // Unpaid Bills
+      if (unpaidBills && typeof unpaidBills === 'object') {
+        const billRecords = Object.keys(unpaidBills).map(key => ({
+          bill_key: key,
+          order_id: String(unpaidBills[key].orderId || key),
+          items: unpaidBills[key].items || [],
+          time: unpaidBills[key].time || '',
+          add_on_tickets: unpaidBills[key].addOnTickets || 0,
+        }));
+        if (billRecords.length > 0) {
+          await supabaseClient.from('unpaid_bills').upsert(billRecords);
+        }
+      }
+
+      console.log('☁️ Synced orders, tables, and bills to Supabase Cloud DB');
     }
 
     // 3. Browser LocalStorage Fallback (Web browser backup)
@@ -3885,6 +3841,7 @@ async function loadFromLocal() {
     if (!supabaseClient) initSupabaseFromStorage();
 
     if (supabaseClient) {
+      // 1. Fetch Orders
       const { data: cloudOrders } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: true });
       if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
         orders = cloudOrders.map(r => ({
@@ -3893,8 +3850,53 @@ async function loadFromLocal() {
           orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
           customerAddress: r.customer_address || '',
         }));
-        console.log('☁️ Loaded orders from Supabase Cloud DB ✓');
       }
+
+      // 2. Fetch Tables
+      const { data: cloudTables } = await supabaseClient.from('tables').select('*').order('id', { ascending: true });
+      if (Array.isArray(cloudTables) && cloudTables.length > 0) {
+        tables = cloudTables.map(r => ({
+          id: r.id, status: r.status || 'available', persons: r.persons || 0,
+          seats: r.seats || 4, reservedFor: r.reserved_for || '', reservedTime: r.reserved_time || '',
+        }));
+      }
+
+      // 3. Fetch Unpaid Bills
+      const { data: cloudBills } = await supabaseClient.from('unpaid_bills').select('*');
+      if (Array.isArray(cloudBills) && cloudBills.length > 0) {
+        const ubObj = {};
+        cloudBills.forEach(r => {
+          ubObj[r.bill_key] = {
+            orderId: r.order_id, items: r.items || [], time: r.time || '', addOnTickets: r.add_on_tickets || 0
+          };
+        });
+        unpaidBills = ubObj;
+      }
+
+      // 4. Fetch Menu Items & Categories
+      const { data: cloudMenu } = await supabaseClient.from('menu_items').select('*').order('id', { ascending: true });
+      if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
+        menuItems = cloudMenu.map(r => ({
+          id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
+          desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
+        }));
+      }
+
+      const { data: cloudCats } = await supabaseClient.from('menu_categories').select('*').order('id', { ascending: true });
+      if (Array.isArray(cloudCats) && cloudCats.length > 0) {
+        menuCategories = cloudCats.map(r => r.name);
+      }
+
+      // 5. Fetch Deals
+      const { data: cloudDeals } = await supabaseClient.from('deals').select('*').order('id', { ascending: true });
+      if (Array.isArray(cloudDeals) && cloudDeals.length > 0) {
+        deals = cloudDeals.map(r => ({
+          id: r.id, name: r.name, category: r.category, items: r.items || [],
+          price: r.price, available: r.available
+        }));
+      }
+
+      console.log('☁️ Loaded all tables from Supabase Cloud DB ✓');
     }
 
     if (window.api && window.api.isDbEmpty) {
@@ -3943,6 +3945,160 @@ async function loadFromLocal() {
     const localTb = localStorage.getItem('hfc_web_tables');
     if (localTb && tables.length === 0) tables = JSON.parse(localTb);
   } catch(e) { console.warn('Database load warning:', e); }
+}
+
+function openCloudConfigModal() {
+  const currentUrl = localStorage.getItem('hfc_supabase_url') || window.SUPABASE_URL || '';
+  const currentKey = localStorage.getItem('hfc_supabase_key') || window.SUPABASE_KEY || '';
+  const isConnected = !!supabaseClient;
+
+  openModal(`
+    <div style="padding:1rem;max-width:500px;margin:0 auto">
+      <h2 style="font-family:'Playfair Display',serif;color:var(--gold);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem">
+        ☁️ Supabase Cloud Database Sync
+      </h2>
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem;line-height:1.4">
+        Connect all Mobile Phones, Cashier PCs, and Kitchen Tablets to the same database so orders update instantly across all devices.
+      </p>
+
+      <div style="background:${isConnected ? 'rgba(16,185,129,0.12)' : 'rgba(255,59,48,0.12)'};border:1px solid ${isConnected ? 'var(--green)' : 'var(--red)'};border-radius:8px;padding:.75rem 1rem;margin-bottom:1.2rem;font-size:.85rem;color:${isConnected ? 'var(--green)' : 'var(--red)'};display:flex;align-items:center;gap:.5rem">
+        <span>${isConnected ? '🟢' : '🔴'}</span>
+        <strong>Status:</strong> ${isConnected ? 'Connected & Syncing Live' : 'Not Connected (Isolated Browser Storage)'}
+      </div>
+
+      <div class="form-group">
+        <label>Supabase Project URL</label>
+        <input type="text" id="cloud-url-input" placeholder="https://xxxx.supabase.co" value="${currentUrl}">
+      </div>
+
+      <div class="form-group">
+        <label>Supabase Anon API Key</label>
+        <input type="password" id="cloud-key-input" placeholder="eyJhbGciOi..." value="${currentKey}">
+      </div>
+
+      <div style="display:flex;gap:.5rem;margin-top:1.5rem;flex-wrap:wrap">
+        <button class="btn" style="flex:1" onclick="saveCloudConfig()">💾 Save & Connect</button>
+        <button class="btn" style="background:var(--surface2);color:var(--text1);border:1px solid var(--border);flex:1" onclick="pushAllDataToCloud()">⬆️ Push Local → Cloud</button>
+        <button class="btn" style="background:rgba(232,69,69,0.2);color:var(--red);border:1px solid var(--red);flex:1" onclick="clearEntireMenu()">🗑️ Wipe Menu Data</button>
+        <button class="btn" style="background:var(--surface2);color:var(--text1);border:1px solid var(--border);flex:1" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  `);
+}
+
+async function clearEntireMenu() {
+  if (!confirm('⚠️ Are you sure you want to delete ALL menu items, categories, and deals from both Cloud & Local storage? This cannot be undone.')) return;
+  try {
+    menuItems = [];
+    menuCategories = [];
+    deals = [];
+
+    localStorage.removeItem('hfc_web_menu_items');
+    localStorage.removeItem('hfc_web_menu_cats');
+    localStorage.removeItem('hfc_web_deals');
+
+    if (window.api && window.api.saveMenuItems) {
+      await Promise.all([
+        window.api.saveMenuItems([]),
+        window.api.saveMenuCategories([]),
+        window.api.saveDeals([]),
+      ]);
+    }
+
+    if (supabaseClient) {
+      await supabaseClient.from('menu_items').delete().gte('id', 0);
+      await supabaseClient.from('menu_categories').delete().gte('id', 0);
+      await supabaseClient.from('deals').delete().gte('id', 0);
+    }
+
+    showToast('🗑️ Entire Menu deleted from Cloud & Local DB!', 'success');
+    if (typeof showSection === 'function') showSection('menu');
+  } catch(e) {
+    console.error('Clear menu error:', e);
+    showToast('Failed to delete menu', 'error');
+  }
+}
+
+async function saveCloudConfig() {
+  const url = document.getElementById('cloud-url-input').value.trim();
+  const key = document.getElementById('cloud-key-input').value.trim();
+
+  if (!url || !key) {
+    showToast('Please enter both Supabase URL and Anon Key', 'warning');
+    return;
+  }
+
+  localStorage.setItem('hfc_supabase_url', url);
+  localStorage.setItem('hfc_supabase_key', key);
+
+  window.SUPABASE_URL = url;
+  window.SUPABASE_KEY = key;
+
+  const connected = initSupabaseFromStorage();
+  if (connected) {
+    showToast('⚡ Cloud DB Connected Successfully!', 'success');
+    await loadFromLocal();
+    if (typeof renderOrders === 'function') renderOrders();
+    if (typeof renderTables === 'function') renderTables();
+    if (typeof renderMenu === 'function') renderMenu();
+    closeModal();
+  } else {
+    showToast('❌ Connection Failed! Check URL & Key', 'error');
+  }
+}
+
+async function pushAllDataToCloud() {
+  if (!supabaseClient) {
+    showToast('Please connect to Supabase Cloud DB first!', 'warning');
+    return;
+  }
+
+  try {
+    showToast('⏳ Syncing menu, categories, deals & orders to Cloud...', 'info');
+
+    // Menu Categories
+    if (menuCategories && menuCategories.length > 0) {
+      await supabaseClient.from('menu_categories').upsert(menuCategories.map(c => ({ name: c })), { onConflict: 'name' });
+    }
+
+    // Menu Items
+    if (menuItems && menuItems.length > 0) {
+      await supabaseClient.from('menu_items').upsert(menuItems.map(m => ({
+        id: m.id, name: m.name, cat: m.cat, price: m.price || 0, discount: m.discount || 0,
+        desc_text: m.desc || '', img: m.img || '🍕', available: m.available !== false, variants: m.variants || []
+      })));
+    }
+
+    // Deals
+    if (deals && deals.length > 0) {
+      await supabaseClient.from('deals').upsert(deals.map(d => ({
+        id: d.id, name: d.name, category: d.category, items: d.items || [], price: d.price || 0, available: d.available !== false
+      })));
+    }
+
+    // Tables
+    if (tables && tables.length > 0) {
+      await supabaseClient.from('tables').upsert(tables.map(t => ({
+        id: t.id, status: t.status || 'available', persons: t.persons || 0, seats: t.seats || 4,
+        reserved_for: t.reservedFor || '', reserved_time: t.reservedTime || ''
+      })));
+    }
+
+    // Orders
+    if (orders && orders.length > 0) {
+      await supabaseClient.from('orders').upsert(orders.map(o => ({
+        id: String(o.id), table_id: o.table ?? null, items: o.items || [], status: o.status || 'pending',
+        note: o.note || '', time: o.time || '', waiter: o.waiter || '', is_add_on: !!o.isAddOn,
+        total: o.total || 0, order_type: o.orderType || 'Dine-in', customer_phone: o.customerPhone || '',
+        customer_address: o.customerAddress || ''
+      })));
+    }
+
+    showToast('✅ All Local Data Successfully Pushed to Cloud Database!', 'success');
+  } catch(e) {
+    console.error('Push to cloud error:', e);
+    showToast('Failed to push data to Cloud DB', 'error');
+  }
 }
 
 // ── ONE-TIME MIGRATION: old localStorage data → SQLite ──
