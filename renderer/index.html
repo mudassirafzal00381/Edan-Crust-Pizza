@@ -472,6 +472,7 @@ async function loadFromServer() {
           name: i.name,
           qty: i.qty,
           price: parseFloat(i.price),
+          desc: i.desc || '',
           menuItemId: i.menuItemId
         })),
         status: o.status || 'pending',
@@ -1359,14 +1360,14 @@ function renderWaiter(){
             <span style="color:var(--text2);font-size:.72rem">${o.isAddOn?'➕ Add-on · ':''}${o.time}</span>
             <span class="status-badge status-${o.status}" style="font-size:.65rem;padding:.15rem .5rem">${o.status}</span>
           </div>
-          ${o.items.map(i=>`<div style="display:flex;justify-content:space-between;color:var(--text2);padding:.1rem 0"><span>${i.qty}× ${i.name}</span><span>Rs ${(i.qty*i.price).toLocaleString()}</span></div>`).join('')}
+          ${o.items.map(i=>`<div style="display:flex;flex-direction:column;padding:.1rem 0"><div style="display:flex;justify-content:space-between;color:var(--text2)"><span>${i.qty}× ${i.name}</span><span>Rs ${(i.qty*i.price).toLocaleString()}</span></div>${i.desc?`<div style="font-size:.72rem;color:var(--gold);margin-left:.75rem">↳ ${i.desc}</div>`:''}</div>`).join('')}
           ${o.note?`<div style="color:var(--amber);font-size:.72rem;margin-top:.2rem">📝 ${o.note}</div>`:''}
         </div>`).join('')}
       </div>`:``}
       ${cart.length===0?`<p style="color:var(--text3);font-size:.85rem;text-align:center;margin:2rem 0">${orderType==='Dine-in'?'Select a table & add items':'Add items to start the order'}</p>`:''}
       ${cart.map((c,idx)=>`
         <div class="cart-item">
-          <div style="flex:1"><div style="font-size:.85rem;font-weight:500">${c.name}</div><div style="font-size:.75rem;color:var(--text2)">Rs ${c.price} each</div></div>
+          <div style="flex:1"><div style="font-size:.85rem;font-weight:500">${c.name}</div>${c.desc?`<div style="font-size:.72rem;color:var(--gold);margin-top:.1rem">↳ ${c.desc}</div>`:''}<div style="font-size:.75rem;color:var(--text2)">Rs ${c.price} each</div></div>
           <div class="cart-qty">
             <div class="qty-btn" onclick="changeQty(${idx},-0.25)" title="-0.25">−</div>
             <input type="number" step="0.25" min="0.25" value="${c.qty}" style="width:52px;text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text1);font-size:.875rem;font-weight:600;padding:.2rem .3rem;font-family:'DM Sans',sans-serif" onchange="setQty(${idx},this.value)" onclick="this.select()">
@@ -1634,19 +1635,19 @@ async function submitOrder(){
       note,
       total: sub,
       orderType, customerPhone: custPhone, customerAddress: custAddress,
-      items: cart.map(c=>({menuItemId: c.id||0, name: c.name, qty: c.qty, price: c.price}))
+      items: cart.map(c=>({menuItemId: c.id||0, name: c.name, qty: c.qty, price: c.price, desc: c.desc||''}))
     });
 
     if(result && result.ok){
-      const newKitchenTicket={id:String(result.orderId),table:orderType==='Dine-in'?selectedTable:null,items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price})),status:'pending',note,time:timeStr,waiter:currentUser,isAddOn,orderType,customerPhone:custPhone,customerAddress:custAddress};
+      const newKitchenTicket={id:String(result.orderId),table:orderType==='Dine-in'?selectedTable:null,items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''})),status:'pending',note,time:timeStr,waiter:currentUser,isAddOn,orderType,customerPhone:custPhone,customerAddress:custAddress};
       orders.unshift(newKitchenTicket);
       const billKey=orderType==='Dine-in'?selectedTable:newKitchenTicket.id;
       if(isAddOn){
-        unpaidBills[billKey].items.push(...cart.map(c=>({name:c.name,qty:c.qty,price:c.price})));
+        unpaidBills[billKey].items.push(...cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''})));
         unpaidBills[billKey].addOnTickets=(unpaidBills[billKey].addOnTickets||0)+1;
         toast('New items sent to kitchen ✓');
       } else {
-        unpaidBills[billKey]={orderId:String(result.orderId),items:[...cart.map(c=>({name:c.name,qty:c.qty,price:c.price}))],time:timeStr};
+        unpaidBills[billKey]={orderId:String(result.orderId),items:[...cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''}))],time:timeStr};
         toast('Order submitted! ✓');
       }
       if(orderType==='Dine-in'){const tbl=tables.find(t=>t.id===selectedTable);if(tbl)tbl.status='occupied';}
@@ -1658,15 +1659,15 @@ async function submitOrder(){
   }
 
   // Fallback local
-  const newKitchenTicket={id:'ORD'+Date.now(),table:orderType==='Dine-in'?selectedTable:null,items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price})),status:'pending',note,time:timeStr,waiter:currentUser,isAddOn,orderType,customerPhone:custPhone,customerAddress:custAddress};
+  const newKitchenTicket={id:'ORD'+Date.now(),table:orderType==='Dine-in'?selectedTable:null,items:cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''})),status:'pending',note,time:timeStr,waiter:currentUser,isAddOn,orderType,customerPhone:custPhone,customerAddress:custAddress};
   orders.unshift(newKitchenTicket);
   const billKey=orderType==='Dine-in'?selectedTable:newKitchenTicket.id;
   if(isAddOn){
-    unpaidBills[billKey].items.push(...cart.map(c=>({name:c.name,qty:c.qty,price:c.price})));
+    unpaidBills[billKey].items.push(...cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''})));
     unpaidBills[billKey].addOnTickets=(unpaidBills[billKey].addOnTickets||0)+1;
     toast('New items sent to kitchen (local) ✓');
   } else {
-    unpaidBills[billKey]={orderId:newKitchenTicket.id,items:[...cart.map(c=>({name:c.name,qty:c.qty,price:c.price}))],time:timeStr};
+    unpaidBills[billKey]={orderId:newKitchenTicket.id,items:[...cart.map(c=>({name:c.name,qty:c.qty,price:c.price,desc:c.desc||''}))],time:timeStr};
     toast('Order submitted (local)! ✓');
   }
   if(orderType==='Dine-in')tables.find(t=>t.id===selectedTable).status='occupied';
@@ -1732,7 +1733,7 @@ function renderManager(){
           <span class="status-badge status-${o.status}">${o.status}</span>
         </div>
         <div class="order-items">
-          ${o.items.map(i => `<div class="order-item-row"><strong>${i.qty}× ${i.name}</strong><span>Rs ${(i.qty * i.price).toLocaleString()}</span></div>`).join('')}
+          ${o.items.map(i => `<div class="order-item-row" style="flex-direction:column;align-items:flex-start"><div style="display:flex;justify-content:space-between;width:100%"><strong>${i.qty}× ${i.name}</strong><span>Rs ${(i.qty * i.price).toLocaleString()}</span></div>${i.desc ? `<div style="font-size:.75rem;color:var(--gold);margin-left:.75rem;margin-top:.1rem">↳ ${i.desc}</div>` : ''}</div>`).join('')}
           ${o.note ? `<div class="order-note">📝 ${o.note}</div>` : ''}
           <div style="font-size:.75rem;color:var(--text3);margin-top:.4rem">⏱ ${o.time} · Staff: ${o.waiter || 'Counter'}</div>
         </div>
@@ -1907,7 +1908,7 @@ function renderKitchen(){
         <div class="kitchen-items">
           <div style="font-size:.75rem;color:var(--text2);margin-bottom:.5rem">ORDER ${o.id} · ${o.time}</div>
           ${o.orderType==='Delivery'?`<div style="font-size:.75rem;color:var(--text2);margin-bottom:.5rem">📞 ${o.customerPhone||'—'}${o.customerAddress?' · '+o.customerAddress:''}</div>`:''}
-          ${o.items.map(i=>`<div class="kitchen-item"><strong style="font-size:1rem">${i.qty}×</strong><span style="flex:1;margin-left:.5rem">${i.name}</span></div>`).join('')}
+          ${o.items.map(i=>`<div class="kitchen-item" style="flex-direction:column;align-items:flex-start"><div style="display:flex;align-items:center;width:100%"><strong style="font-size:1rem">${i.qty}×</strong><span style="flex:1;margin-left:.5rem">${i.name}</span></div>${i.desc?`<div style="font-size:.78rem;color:var(--gold);margin-left:1.5rem;margin-top:.15rem">↳ ${i.desc}</div>`:''}</div>`).join('')}
           ${o.note?`<div class="kitchen-note">⚠ ${o.note}</div>`:''}
         </div>
         <div style="padding:.75rem 1rem;border-top:1px solid var(--border);display:flex;gap:.5rem">
@@ -1995,7 +1996,8 @@ function printKitchenTicket(id){
     <div class="item-row">
       <span class="item-qty">${i.qty}×</span>
       <span>${i.name}</span>
-    </div>`).join('')}
+    </div>
+    ${i.desc ? `<div style="font-size:11px;font-weight:normal;padding-left:34px;margin-bottom:4px;color:#000">↳ ${i.desc}</div>` : ''}`).join('')}
 
   ${o.note?`
   <div class="divider"></div>
@@ -2187,7 +2189,7 @@ function generateMergedBill(billKey,type,quiet=false){
       ${group.length>1?`<div style="font-size:.7rem;color:var(--blue);margin-top:.2rem">Orders: ${billNums}</div>`:''}
     </div>
     ${group.length>1?`<div style="background:rgba(74,144,217,.08);border-radius:4px;padding:.4rem .6rem;margin:.5rem 0;font-size:.72rem;color:var(--blue)">✓ ${group.length} bills merged</div>`:''}
-    ${items.map(i=>`<div class="bill-row"><span>${i.qty}× ${i.name}</span><span>Rs ${(i.qty*i.price).toLocaleString()}</span></div>`).join('')}
+    ${items.map(i=>`<div class="bill-row"><span>${i.qty}× ${i.name}${i.desc?`<br><small style="color:var(--text2);font-weight:normal">↳ ${i.desc}</small>`:''}</span><span>Rs ${(i.qty*i.price).toLocaleString()}</span></div>`).join('')}
     <div class="bill-row" style="margin-top:.5rem"><span>Subtotal</span><span>Rs ${sub.toLocaleString()}</span></div>
     ${disc?`<div class="bill-row" style="color:var(--green)"><span>Discount (${disc}%)</span><span>−Rs ${discAmt.toLocaleString()}</span></div>`:''}
     ${perHead?`<div class="bill-row"><span>Per Head (Rs ${perHeadRate.toLocaleString()} &times; ${perHeadPersons} persons)</span><span>Rs ${perHead.toLocaleString()}</span></div>`:''}
@@ -2340,7 +2342,7 @@ function printBill(){
       const lineTotal = 'Rs '+(i.qty*i.price).toLocaleString();
       return `<tr>
         <td class="col-no">${idx+1}.</td>
-        <td class="col-name">${i.qty}&times; ${i.name}${i.qty>1?`<br><span class="unit-note">@ Rs ${i.price.toLocaleString()} each</span>`:''}</td>
+        <td class="col-name">${i.qty}&times; ${i.name}${i.desc?`<br><span class="unit-note" style="font-weight:normal;color:#000">↳ ${i.desc}</span>`:''}${i.qty>1?`<br><span class="unit-note">@ Rs ${i.price.toLocaleString()} each</span>`:''}</td>
         <td class="col-amt">${lineTotal}</td>
       </tr>`;
     }).join('')}
