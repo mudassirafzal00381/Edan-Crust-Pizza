@@ -1,10 +1,10 @@
 {
   "version": 2,
+  "public": true,
   "cleanUrls": true,
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/renderer/index.html"
-    }
+    { "src": "/renderer/(.*)", "dest": "/renderer/$1" },
+    { "src": "/logo.png", "dest": "/logo.png" },
+    { "src": "/(.*)", "dest": "/renderer/$1" }
   ]
 }

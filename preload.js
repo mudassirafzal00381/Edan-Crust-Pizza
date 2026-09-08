@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('api', {
   getSettings: () => ipcRenderer.invoke('db:getSettings'),
   saveSettings: (s) => ipcRenderer.invoke('db:saveSettings', s),
 
+  getAppUsers: () => ipcRenderer.invoke('db:getAppUsers'),
+  saveAppUsers: (users) => ipcRenderer.invoke('db:saveAppUsers', users),
+
   isDbEmpty: () => ipcRenderer.invoke('db:isEmpty'),
   clearAllData: () => ipcRenderer.invoke('db:clearAllData'),
   migrateFromLocalStorage: (legacy) => ipcRenderer.invoke('db:migrateFromLocalStorage', legacy),

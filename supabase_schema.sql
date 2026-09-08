@@ -164,23 +164,60 @@ ALTER TABLE public.sales_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expense_ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow public all menu_categories" ON public.menu_categories;
 CREATE POLICY "Allow public all menu_categories" ON public.menu_categories FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all menu_items" ON public.menu_items;
 CREATE POLICY "Allow public all menu_items" ON public.menu_items FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all deals" ON public.deals;
 CREATE POLICY "Allow public all deals" ON public.deals FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all tables" ON public.tables;
 CREATE POLICY "Allow public all tables" ON public.tables FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all orders" ON public.orders;
 CREATE POLICY "Allow public all orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all unpaid_bills" ON public.unpaid_bills;
 CREATE POLICY "Allow public all unpaid_bills" ON public.unpaid_bills FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all inventory" ON public.inventory;
 CREATE POLICY "Allow public all inventory" ON public.inventory FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all employees" ON public.employees;
 CREATE POLICY "Allow public all employees" ON public.employees FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all petty_cash" ON public.petty_cash;
 CREATE POLICY "Allow public all petty_cash" ON public.petty_cash FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all sales_ledger" ON public.sales_ledger;
 CREATE POLICY "Allow public all sales_ledger" ON public.sales_ledger FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all expense_ledger" ON public.expense_ledger;
 CREATE POLICY "Allow public all expense_ledger" ON public.expense_ledger FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow public all settings" ON public.settings;
 CREATE POLICY "Allow public all settings" ON public.settings FOR ALL USING (true) WITH CHECK (true);
 
--- REALTIME REPLICATION
-ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.unpaid_bills;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.tables;
+-- REALTIME REPLICATION (SAFE ADD)
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.unpaid_bills;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.tables;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SEED EDEN CRUST PIZZA FULL MENU DATA

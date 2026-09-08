@@ -224,6 +224,7 @@ tr:hover td{background:rgba(201,168,76,.04)}
 
 /* ── PRINT RECEIPT STYLES (@media print) ── */
 @media print {
+  @page { size: portrait; margin: 0; }
   body * { visibility: hidden; }
   #bill-modal, #bill-modal *, .bill-preview, .bill-preview * { visibility: visible; }
   #bill-modal { position: absolute; left: 0; top: 0; width: 100%; background: #fff !important; color: #000 !important; }
@@ -308,7 +309,7 @@ tr:hover td{background:rgba(201,168,76,.04)}
     </div>
     <div class="form-group">
       <label>Password</label>
-      <input type="password" id="password" placeholder="••••••••" value="1234" onkeydown="if(event.key==='Enter')doLogin()">
+      <input type="password" id="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <button class="btn" onclick="doLogin()">Sign In</button>
     <p style="font-size:.75rem;color:var(--text3);text-align:center;margin-top:1rem">Cloud & Local Network Mode</p>
@@ -415,127 +416,9 @@ async function apiDelete(endpoint) {
   }
 }
 
-// ── LOAD ALL DATA FROM SERVER ──
+// ── LOAD ALL DATA FROM CENTRAL DATABASE ──
 async function loadFromServer() {
-  try {
-    // Pehle check karo ke server actually chal raha hai
-    const pingTest = await fetch(API_BASE + '/api/menu', {method:'HEAD'}).catch(()=>null);
-    if (!pingTest || !pingTest.ok) {
-      // Server nahi hai — database data safe rakho, overwrite mat karo
-      API_CONNECTED = false;
-      updateServerStatus(false);
-      console.log('ℹ️ Server nahi mila — SQLite database se chal raha hai (data safe hai)');
-      return;
-    }
-
-    const [menuData, tablesData, ordersData, empData, invData, pettyData] = await Promise.all([
-      apiGet('/api/menu'),
-      apiGet('/api/tables'),
-      apiGet('/api/orders'),
-      apiGet('/api/employees'),
-      apiGet('/api/inventory'),
-      apiGet('/api/pettycash')
-    ]);
-
-    // Sirf tab overwrite karo jab server se sahi data aaye
-    if (menuData && Array.isArray(menuData) && menuData.length > 0) {
-      menuItems = menuData.map(i => ({
-        id: i.id,
-        name: i.name,
-        cat: i.category,
-        price: parseFloat(i.price),
-        discount: 0,
-        desc: i.description || '',
-        img: i.emoji || '🍽️',
-        available: i.available === true || i.available === 1
-      }));
-      const cats = [...new Set(menuItems.map(i => i.cat))].filter(Boolean);
-      if (cats.length > 0) menuCategories = cats;
-    }
-
-    if (tablesData && Array.isArray(tablesData) && tablesData.length > 0) {
-      tables = tablesData.map(t => ({
-        id: t.id,
-        status: t.status || 'available',
-        persons: 0,
-        seats: t.seats || 4,
-        reservedFor: '',
-        reservedTime: ''
-      }));
-    }
-
-    if (ordersData && Array.isArray(ordersData)) {
-      orders = ordersData.map(o => ({
-        id: String(o.id),
-        table: o.tableId,
-        items: (o.items || []).map(i => ({
-          name: i.name,
-          qty: i.qty,
-          price: parseFloat(i.price),
-          desc: i.desc || '',
-          menuItemId: i.menuItemId
-        })),
-        status: o.status || 'pending',
-        note: o.note || '',
-        time: o.createdAt ? new Date(o.createdAt).toLocaleTimeString('en-PK',{hour:'2-digit',minute:'2-digit'}) : '--:--',
-        waiter: o.waiter || 'Staff',
-        total: parseFloat(o.total) || 0
-      }));
-    }
-
-    if (empData && Array.isArray(empData) && empData.length > 0) {
-      employees = empData.map(e => ({
-        id: e.id,
-        name: e.name,
-        cnic: e.cnic || '',
-        phone: e.phone || '',
-        designation: e.designation || 'Staff',
-        salary: parseFloat(e.salary) || 0,
-        status: e.status || 'Present',
-        address: e.address || '',
-        salaryPayments: [],
-        advances: [],
-        attendanceLog: []
-      }));
-    }
-
-    if (invData && Array.isArray(invData) && invData.length > 0) {
-      inventory = invData.map(i => ({
-        id: i.id,
-        item: i.item || i.name || 'Stock Item',
-        name: i.name || i.item || 'Stock Item',
-        unit: i.unit || 'pcs',
-        stock: parseFloat(i.stock ?? i.qty) || 0,
-        qty: parseFloat(i.qty ?? i.stock) || 0,
-        min: parseFloat(i.min ?? i.minQty) || 10,
-        minQty: parseFloat(i.minQty ?? i.min) || 10,
-        price: parseFloat(i.price ?? i.cost) || 0,
-        cost: parseFloat(i.cost ?? i.price) || 0,
-        last: i.last || new Date().toISOString().split('T')[0]
-      }));
-    }
-
-    if (pettyData && Array.isArray(pettyData) && pettyData.length > 0) {
-      pettyCash = pettyData.map(p => ({
-        id: p.id,
-        name: p.name,
-        category: p.category || 'Misc',
-        amount: parseFloat(p.amount) || 0,
-        date: p.entryDate ? p.entryDate.split('T')[0] : new Date().toISOString().split('T')[0],
-        notes: p.notes || ''
-      }));
-      if (pettyCash.length > 0) nextPettyId = Math.max(...pettyCash.map(p => p.id)) + 1;
-    }
-
-    API_CONNECTED = true;
-    updateServerStatus(true);
-    saveToLocal();
-    console.log('✅ Server se data load hua aur save hua');
-  } catch(e) {
-    API_CONNECTED = false;
-    updateServerStatus(false);
-    console.log('ℹ️ Server nahi mila — SQLite database se chal raha hai (data safe hai)');
-  }
+  await loadFromLocal();
 }
 
 function updateServerStatus(connected) {
@@ -729,27 +612,95 @@ let activeSection = '';
 // Tracks unpaid bills: { tableId: { orderId, items, total, time } }
 let unpaidBills = {};
 
+// ── USERS & AUTHENTICATION ──
+let appUsers = [
+  { username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin' }
+];
+
+async function loadAppUsers(){
+  try {
+    if (window.api && window.api.getAppUsers) {
+      const dbUsers = await window.api.getAppUsers();
+      if (dbUsers && dbUsers.length > 0) appUsers = dbUsers;
+    } else {
+      const lsUsers = localStorage.getItem('appUsers');
+      if (lsUsers) {
+        try { appUsers = JSON.parse(lsUsers); } catch(e){}
+      }
+    }
+  } catch(e) {
+    console.warn('App users load error:', e);
+  }
+  // Sync admin credentials and login screen with loaded database password
+  const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
+  if (adminUser) {
+    ADMIN_CREDENTIALS.password = adminUser.password;
+    const pwdInput = document.getElementById('password');
+    if (pwdInput && !pwdInput.value) {
+      pwdInput.value = adminUser.password;
+    }
+  }
+}
+
+async function saveAppUsersLocal(){
+  try {
+    localStorage.setItem('appUsers', JSON.stringify(appUsers));
+    if (window.api && window.api.saveAppUsers) {
+      await window.api.saveAppUsers(appUsers);
+    }
+  } catch(e) {
+    console.warn('App users save error:', e);
+  }
+  const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
+  if (adminUser) {
+    ADMIN_CREDENTIALS.password = adminUser.password;
+    const pwdInput = document.getElementById('password');
+    if (pwdInput) pwdInput.value = adminUser.password;
+  }
+}
+
+// Auto-sync app users on launch
+loadAppUsers().catch(() => {});
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', () => loadAppUsers().catch(() => {}));
+}
+
 // ── LOGIN ──
 async function doLogin(){
   try {
-    currentUser = document.getElementById('username')?.value || 'Admin';
-    currentRole = 'Admin';
+    await loadAppUsers();
+    const uInput = (document.getElementById('username')?.value || '').trim();
+    const pInput = document.getElementById('password')?.value || '';
+
+    if (!uInput) { toast('Please enter username', 'error'); return; }
+    if (!pInput) { toast('Please enter password', 'error'); return; }
+
+    const user = appUsers.find(u => u.username.toLowerCase() === uInput.toLowerCase());
+
+    if (!user || user.password !== pInput) {
+      toast('Invalid username or password', 'error');
+      return;
+    }
+
+    currentUser = user.username;
+    currentRole = user.role || 'Admin';
+    ADMIN_CREDENTIALS.username = user.username;
+    ADMIN_CREDENTIALS.password = user.password;
+
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-    document.getElementById('user-display').textContent = currentUser;
-    document.getElementById('role-display').textContent = 'Admin';
+    document.getElementById('user-display').textContent = user.name || user.username;
+    document.getElementById('role-display').textContent = currentRole;
     document.getElementById('btn-change-pwd').style.display = 'inline-flex';
     
     buildNav();
     showSection('dashboard');
 
-    // Async background data load — migration must finish first: it can
-    // write legacy data into the database, and loadFromLocal() reads that
-    // same database right after, so the two must not race each other.
     await migrateLocalStorageIfNeeded().catch(e => console.warn('Migration:', e));
     await loadFromLocal();
     showSection(activeSection || 'dashboard');
     loadFromServer().then(() => showSection(activeSection || 'dashboard')).catch(() => {});
+    toast(`Welcome ${user.name || user.username}!`, 'success');
   } catch (err) {
     console.error('Login error:', err);
     toast('Login error: ' + err.message, 'error');
@@ -832,14 +783,30 @@ function renderDashboard(){
         // `orders`, so pad the rest of the list with the most recent
         // completed sales — otherwise this card goes empty the moment
         // every table is settled, which reads as broken.
-        const active = orders.slice(0,5).map(o=>({label:orderLabel(o), itemCount:o.items.length, status:o.status}));
-        const recentSales = salesLedger.slice(-5).reverse().map(s=>({label:s.orderType==='Dine-in'?'Table '+s.table:s.orderType, itemCount:s.items.length, status:'completed'}));
+        const active = orders.slice(0,5).map(o=>({
+          label: orderLabel(o),
+          itemSummary: (o.items||[]).map(i=>`${i.qty}× ${i.name}`).join(', '),
+          total: o.total || (o.items||[]).reduce((a,i)=>a+i.qty*i.price,0),
+          status: o.status
+        }));
+        const recentSales = salesLedger.slice(-5).reverse().map(s=>({
+          label: s.orderType==='Dine-in'?'Table '+s.table:(s.orderType||'Order'),
+          itemSummary: (s.items||[]).map(i=>`${i.qty}× ${i.name}`).join(', '),
+          total: s.total || (s.items||[]).reduce((a,i)=>a+i.qty*i.price,0),
+          status: 'completed'
+        }));
         const combined = [...active, ...recentSales].slice(0,5);
         if(combined.length===0) return `<p style="color:var(--text3);font-size:.85rem;text-align:center;padding:1.5rem 0">No orders yet today.</p>`;
         return combined.map(o=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--border);font-size:.85rem">
-          <span><strong style="color:var(--gold)">${o.label}</strong> · ${o.itemCount} items</span>
-          <span class="status-badge status-${o.status}">${o.status}</span>
+        <div style="padding:.55rem 0;border-bottom:1px solid var(--border);font-size:.85rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.2rem">
+            <div style="display:flex;align-items:center;gap:.4rem">
+              <strong style="color:var(--gold)">${o.label}</strong>
+              <span class="status-badge status-${o.status}">${o.status}</span>
+            </div>
+            <strong style="color:var(--text1)">Rs ${o.total.toLocaleString()}</strong>
+          </div>
+          <div style="color:var(--text2);font-size:.78rem;line-height:1.3">${o.itemSummary || 'No items'}</div>
         </div>`).join('');
       })()}
     </div>
@@ -1369,9 +1336,9 @@ function renderWaiter(){
         <div class="cart-item">
           <div style="flex:1"><div style="font-size:.85rem;font-weight:500">${c.name}</div>${c.desc?`<div style="font-size:.72rem;color:var(--gold);margin-top:.1rem">↳ ${c.desc}</div>`:''}<div style="font-size:.75rem;color:var(--text2)">Rs ${c.price} each</div></div>
           <div class="cart-qty">
-            <div class="qty-btn" onclick="changeQty(${idx},-0.25)" title="-0.25">−</div>
-            <input type="number" step="0.25" min="0.25" value="${c.qty}" style="width:52px;text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text1);font-size:.875rem;font-weight:600;padding:.2rem .3rem;font-family:'DM Sans',sans-serif" onchange="setQty(${idx},this.value)" onclick="this.select()">
-            <div class="qty-btn" onclick="changeQty(${idx},0.25)" title="+0.25">+</div>
+            <div class="qty-btn" onclick="changeQty(${idx},-1)" title="-1">−</div>
+            <input type="number" step="1" min="1" value="${c.qty}" style="width:52px;text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text1);font-size:.875rem;font-weight:600;padding:.2rem .3rem;font-family:'DM Sans',sans-serif" onchange="setQty(${idx},this.value)" onclick="this.select()">
+            <div class="qty-btn" onclick="changeQty(${idx},1)" title="+1">+</div>
           </div>
         </div>`).join('')}
       ${cart.length>0?`
@@ -1401,6 +1368,7 @@ function renderWaiter(){
           <div style="display:flex;justify-content:space-between;align-items:center;padding:.45rem .6rem;background:var(--surface2);border-radius:8px;font-size:.8rem">
             <div>
               <strong style="color:var(--text1)">${orderLabel(o)}</strong>
+              <span style="font-size:.7rem;color:var(--gold);margin-left:.3rem;font-weight:600">(${o.orderType||'Dine-in'})</span>
               <div style="font-size:.72rem;color:var(--text2)">${o.items.length} items · Rs ${(o.total||o.items.reduce((a,c)=>a+c.qty*c.price,0)).toLocaleString()}</div>
             </div>
             <div style="display:flex;gap:.3rem">
@@ -1416,6 +1384,7 @@ function renderWaiter(){
 function selectOrderType(type){
   orderType=type;
   if(type!=='Dine-in')selectedTable=null;
+  ordersView='new';
   showSection('orders');
 }
 function selectTable(id){
@@ -1697,11 +1666,17 @@ function renderManager(){
   </div>
 
   <div class="card" style="margin-bottom:1.25rem;padding:.85rem 1rem">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
-      <span style="font-size:.85rem;color:var(--gold);font-weight:700">🪑 Tables</span>
-      <span style="font-size:.72rem;color:var(--text3)">Tap a free table to start an order there</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;cursor:pointer" onclick="goToNewOrder()">
+      <span style="font-size:.85rem;color:var(--gold);font-weight:700">📋 Select Order Type</span>
+      <span style="font-size:.72rem;color:var(--text3)">Tap to open menu & tables →</span>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+    <div style="display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:.65rem">
+      <button class="btn-sm btn-gold" style="padding:.45rem .9rem;font-size:.85rem;font-weight:700;display:flex;align-items:center;gap:.35rem" onclick="selectOrderType('Dine-in')">🪑 Dine-in</button>
+      <button class="btn-sm btn-green" style="padding:.45rem .9rem;font-size:.85rem;font-weight:700;display:flex;align-items:center;gap:.35rem" onclick="selectOrderType('Takeaway')">🥡 Takeaway</button>
+      <button class="btn-sm btn-blue" style="padding:.45rem .9rem;font-size:.85rem;font-weight:700;display:flex;align-items:center;gap:.35rem" onclick="selectOrderType('Delivery')">🛵 Delivery</button>
+    </div>
+    <div style="font-size:.75rem;color:var(--text2);margin-bottom:.4rem;font-weight:600">🪑 Dine-in Tables:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.4rem">
       ${tables.map(t=>`<button class="btn-sm ${t.status==='available'?'btn-green':t.status==='occupied'?'btn-red':'btn-gold'}" onclick="goToNewOrderWithTable(${t.id})">T${t.id} ${t.status==='occupied'?'●':t.status==='reserved'?'◐':'○'}</button>`).join('')}
     </div>
   </div>
@@ -1726,13 +1701,24 @@ function renderManager(){
     <button class="btn-primary" onclick="goToNewOrder()">Take New Order</button>
   </div>` : `
   <div class="orders-grid">
-    ${activeOrders.map(o => `
+    ${activeOrders.map(o => {
+      const type = o.orderType || 'Dine-in';
+      const typeIcon = type === 'Dine-in' ? '🪑' : type === 'Takeaway' ? '🥡' : '🛵';
+      const typeBg = type === 'Dine-in' ? 'rgba(201,168,76,.18)' : type === 'Takeaway' ? 'rgba(16,185,129,.18)' : 'rgba(59,130,246,.18)';
+      const typeColor = type === 'Dine-in' ? 'var(--gold)' : type === 'Takeaway' ? 'var(--green)' : 'var(--blue)';
+      return `
       <div class="order-card">
-        <div class="order-header">
-          <span class="order-table" style="font-weight:700;color:var(--gold)">${orderLabel(o)}</span>
+        <div class="order-header" style="display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+            <span class="order-table" style="font-weight:700;color:var(--gold)">${orderLabel(o)}</span>
+            <span style="background:${typeBg};color:${typeColor};font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:6px;display:inline-flex;align-items:center;gap:.25rem;border:1px solid ${typeColor}">
+              ${typeIcon} ${type}
+            </span>
+          </div>
           <span class="status-badge status-${o.status}">${o.status}</span>
         </div>
         <div class="order-items">
+          ${type==='Delivery'?`<div style="font-size:.78rem;color:var(--gold);margin-bottom:.4rem;padding-bottom:.3rem;border-bottom:1px dashed var(--border);font-weight:600">📞 ${o.customerPhone||'—'}${o.customerAddress?' · '+o.customerAddress:''}</div>`:''}
           ${o.items.map(i => `<div class="order-item-row" style="flex-direction:column;align-items:flex-start"><div style="display:flex;justify-content:space-between;width:100%"><strong>${i.qty}× ${i.name}</strong><span>Rs ${(i.qty * i.price).toLocaleString()}</span></div>${i.desc ? `<div style="font-size:.75rem;color:var(--gold);margin-left:.75rem;margin-top:.1rem">↳ ${i.desc}</div>` : ''}</div>`).join('')}
           ${o.note ? `<div class="order-note">📝 ${o.note}</div>` : ''}
           <div style="font-size:.75rem;color:var(--text3);margin-top:.4rem">⏱ ${o.time} · Staff: ${o.waiter || 'Counter'}</div>
@@ -1741,7 +1727,8 @@ function renderManager(){
           ${o.status === 'pending' ? `<button class="btn-sm btn-green" onclick="updateOrder('${o.id}','confirmed')">✓ Accept</button><button class="btn-sm btn-red" onclick="updateOrder('${o.id}','rejected')">✗ Reject</button>` : `<button class="btn-sm btn-green" style="font-weight:700" onclick="payOrder('${o.id}')">⚡ Pay & Bill</button>`}
           <button class="btn-sm btn-blue" onclick="editOrder('${o.id}')">Edit</button>
         </div>
-      </div>`).join('')}
+      </div>`;
+    }).join('')}
   </div>`}
   `;
 }
@@ -1768,6 +1755,14 @@ async function updateOrder(id, status) {
       const t = tables.find(t => t.id === o.table);
       if (t) { t.status = 'available'; t.persons = 0; }
     }
+    if (supabaseClient) {
+      try {
+        await supabaseClient.from('orders').delete().eq('id', String(id));
+        if (billKey != null && !unpaidBills[billKey]) {
+          await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
+        }
+      } catch(e) {}
+    }
     await saveToLocal();
     showSection('orders');
     toast(`Order ${orderLabel(o)} rejected & removed`);
@@ -1787,16 +1782,67 @@ async function refreshManagerOrders() {
   toast('Orders refreshed from database ✓');
 }
 
-function editOrder(id){
-  const o=orders.find(x=>x.id===id);
-  if(!o)return;
-  // Build edit modal with all items, qty controls, add item picker
-  const itemOptions=menuItems.filter(m=>m.available).map(m=>`<option value="${m.id}" data-price="${m.discount||m.price}">${m.name} — Rs ${m.discount||m.price}</option>`).join('');
-  showModal(`<h3>✏ Edit Order · ${orderLabel(o)}</h3>
-  <div id="edit-items-list">
-    ${o.items.map((item,idx)=>`
-    <div id="edit-row-${idx}" style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:.88rem;color:var(--text1)">${item.name}</span>
+function getAllAddableItems() {
+  const list = [];
+  menuItems.forEach(m => {
+    if (!m.available) return;
+    if (m.variants && m.variants.length > 0) {
+      m.variants.forEach(v => {
+        list.push({
+          key: `m_${m.id}_${v.label}`,
+          name: `${m.name} (${v.label})`,
+          price: Number(v.price),
+          desc: '',
+          cat: m.cat
+        });
+      });
+    } else {
+      list.push({
+        key: `m_${m.id}`,
+        name: m.name,
+        price: Number(m.discount || m.price),
+        desc: '',
+        cat: m.cat
+      });
+    }
+  });
+  deals.forEach(d => {
+    if (d.available === false) return;
+    list.push({
+      key: `d_${d.id}`,
+      name: `🎉 ${d.name}`,
+      price: Number(d.price),
+      desc: d.items ? d.items.join(' + ') : '',
+      cat: d.category || 'Deals'
+    });
+  });
+  return list;
+}
+
+function filterEditAddItems(query = '') {
+  const sel = document.getElementById('edit-add-item');
+  if (!sel) return;
+  const q = query.trim().toLowerCase();
+  const all = window._editAddableItems || [];
+  const filtered = q
+    ? all.filter(i => i.name.toLowerCase().includes(q) || (i.cat && i.cat.toLowerCase().includes(q)) || (i.desc && i.desc.toLowerCase().includes(q)))
+    : all;
+
+  sel.innerHTML = `<option value="">Select item (${filtered.length} found)...</option>` +
+    filtered.map(i => `<option value="${i.key}">${i.name} — Rs ${i.price.toLocaleString()}</option>`).join('');
+
+  if (q && filtered.length === 1) {
+    sel.selectedIndex = 1;
+  }
+}
+
+function renderEditItemsHTML(){
+  return (window._editItems || []).map((item,idx)=>`
+    <div id="edit-row-${idx}" style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--border);opacity:${item.qty===0?'.35':'1'}">
+      <div style="flex:1">
+        <div style="font-size:.88rem;color:var(--text1);font-weight:600">${item.name}</div>
+        ${item.desc?`<div style="font-size:.72rem;color:var(--gold)">↳ ${item.desc}</div>`:''}
+      </div>
       <div style="display:flex;align-items:center;gap:.3rem">
         <button class="qty-btn" onclick="editQtyChange(${idx},-1)">−</button>
         <input type="number" min="0" value="${item.qty}" id="edit-qty-${idx}" style="width:44px;text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text1);font-size:.85rem;padding:.2rem" onchange="editQtySet(${idx},this.value)">
@@ -1804,14 +1850,27 @@ function editOrder(id){
       </div>
       <span style="font-size:.82rem;color:var(--gold);width:70px;text-align:right">Rs ${(item.qty*item.price).toLocaleString()}</span>
       <button class="btn-sm btn-red" style="padding:.2rem .5rem" onclick="editRemoveItem(${idx})">✕</button>
-    </div>`).join('')}
+    </div>`).join('');
+}
+
+function editOrder(id){
+  const o=orders.find(x=>x.id===id);
+  if(!o)return;
+  window._editOrderId=id;
+  window._editItems=o.items.map(i=>({...i}));
+  window._editAddableItems=getAllAddableItems();
+
+  showModal(`<h3>✏ Edit Order · ${orderLabel(o)}</h3>
+  <div id="edit-items-list">
+    ${renderEditItemsHTML()}
   </div>
   <div style="margin-top:.75rem;padding:.75rem;background:var(--surface2);border-radius:var(--radius2)">
     <label style="font-size:.78rem;color:var(--gold);display:block;margin-bottom:.4rem;font-weight:600">+ Add Item to Order</label>
+    <input type="text" id="edit-item-search" class="input-field" style="width:100%;margin-bottom:.4rem;font-size:.82rem" placeholder="🔍 Search item or size (e.g. water, pizza, burger...)" oninput="filterEditAddItems(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();editAddItem('${id}');}" autocomplete="off">
     <div style="display:flex;gap:.5rem">
       <select class="input-field" id="edit-add-item" style="flex:1;font-size:.82rem">
-        <option value="">Select item...</option>
-        ${itemOptions}
+        <option value="">Select item (${window._editAddableItems.length} available)...</option>
+        ${window._editAddableItems.map(i=>`<option value="${i.key}">${i.name} — Rs ${i.price.toLocaleString()}</option>`).join('')}
       </select>
       <button class="btn-sm btn-green" onclick="editAddItem('${id}')">Add</button>
     </div>
@@ -1824,9 +1883,6 @@ function editOrder(id){
     <button class="btn-outline" onclick="closeModal()">Cancel</button>
     <button class="btn-primary" onclick="saveOrderEdit('${id}')">Save Changes</button>
   </div>`);
-  // Store temp copy for editing
-  window._editOrderId=id;
-  window._editItems=o.items.map(i=>({...i}));
 }
 
 function editQtyChange(idx,delta){
@@ -1854,28 +1910,41 @@ function editRemoveItem(idx){
 }
 function editAddItem(orderId){
   const sel=document.getElementById('edit-add-item');
-  const id=parseInt(sel.value);if(!id)return;
-  const menuItem=menuItems.find(m=>m.id===id);if(!menuItem)return;
-  const existing=window._editItems.find(i=>i.name===menuItem.name);
-  if(existing){existing.qty++;toast(`${menuItem.name} qty increased`);}
-  else{window._editItems.push({name:menuItem.name,qty:1,price:menuItem.discount||menuItem.price});}
-  // Rebuild list in modal
-  const listEl=document.getElementById('edit-items-list');
-  if(listEl){
-    listEl.innerHTML=window._editItems.map((item,idx)=>`
-    <div id="edit-row-${idx}" style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--border);opacity:${item.qty===0?'.35':'1'}">
-      <span style="flex:1;font-size:.88rem;color:var(--text1)">${item.name}</span>
-      <div style="display:flex;align-items:center;gap:.3rem">
-        <button class="qty-btn" onclick="editQtyChange(${idx},-1)">−</button>
-        <input type="number" min="0" value="${item.qty}" id="edit-qty-${idx}" style="width:44px;text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text1);font-size:.85rem;padding:.2rem" onchange="editQtySet(${idx},this.value)">
-        <button class="qty-btn" onclick="editQtyChange(${idx},1)">+</button>
-      </div>
-      <span style="font-size:.82rem;color:var(--gold);width:70px;text-align:right">Rs ${(item.qty*item.price).toLocaleString()}</span>
-      <button class="btn-sm btn-red" style="padding:.2rem .5rem" onclick="editRemoveItem(${idx})">✕</button>
-    </div>`).join('');
+  if(!sel)return;
+  let key=sel.value;
+  if(!key && sel.options.length > 1 && sel.options[1].value){
+    key = sel.options[1].value;
   }
+  if(!key)return;
+  const all = window._editAddableItems || getAllAddableItems();
+  const target = all.find(i => i.key === key);
+  if(!target)return;
+
+  const existing = window._editItems.find(i => i.name === target.name);
+  if(existing){
+    existing.qty++;
+    if(target.desc && !existing.desc) existing.desc = target.desc;
+    toast(`${target.name} qty increased`);
+  } else {
+    window._editItems.push({
+      name: target.name,
+      qty: 1,
+      price: target.price,
+      desc: target.desc || ''
+    });
+    toast(`${target.name} added`);
+  }
+
+  const listEl=document.getElementById('edit-items-list');
+  if(listEl) listEl.innerHTML = renderEditItemsHTML();
+
   sel.value='';
-  toast(`${menuItem.name} added`);
+  const searchInp = document.getElementById('edit-item-search');
+  if(searchInp) {
+    searchInp.value = '';
+    filterEditAddItems('');
+    searchInp.focus();
+  }
 }
 async function saveOrderEdit(id){
   const o=orders.find(x=>x.id===id);if(!o)return;
@@ -1938,12 +2007,11 @@ function printKitchenTicket(id){
   const now=new Date().toLocaleString('en-PK');
   const statusLabel=o.status==='confirmed'?'NEW ORDER':o.status==='preparing'?'IN PREPARATION':'READY';
 
-  const printWindow=window.open('','_blank','width=400,height=500');
-  printWindow.document.write(`<!DOCTYPE html><html><head>
+  const htmlContent = `<!DOCTYPE html><html><head>
   <meta charset="UTF-8">
   <title>Kitchen Ticket - ${o.id}</title>
   <style>
-    @page { size: 80mm auto; margin: 0; }
+    @page { size: 80mm portrait; margin: 0; }
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
       font-family: 'Courier New', Courier, monospace;
@@ -2008,14 +2076,84 @@ function printKitchenTicket(id){
 
   <div class="divider-solid" style="margin-top:8px"></div>
   <div class="center" style="font-size:10px;margin-top:4px">— End of Ticket —</div>
+  </body></html>`;
 
-  <script>
-    window.onload=function(){window.print();}
-    window.onafterprint=function(){window.close();}
-  <\/script>
-  </body></html>`);
-  printWindow.document.close();
-  toast(`Kitchen ticket printed for ${orderLabel(o)} ✓`);
+  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
+  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
+
+  if (window.api && window.api.printReceipt) {
+    window.api.printReceipt(htmlContent, {
+      silent: silentPrint,
+      deviceName: printerDevice || undefined
+    }).then(res => {
+      if (res && res.success) {
+        toast(`Kitchen ticket printed for ${orderLabel(o)} ✓`);
+      } else {
+        toast(`Kitchen ticket sent to printer ✓`);
+      }
+    }).catch(() => {
+      fallbackPrintWindow(htmlContent);
+    });
+  } else {
+    fallbackPrintWindow(htmlContent);
+  }
+}
+
+// ── BILLING STATE & UX HELPERS ──
+const billingState = {
+  paymentMethod: 'Cash',
+  discountPct: 0,
+  deliveryCharge: 0,
+  perHeadRate: 0,
+  perHeadPersons: 1,
+  cashReceived: ''
+};
+
+function syncBillingStateFromUI() {
+  const d = document.getElementById('discount-pct');
+  if (d) billingState.discountPct = parseFloat(d.value) || 0;
+  const del = document.getElementById('delivery-charge');
+  if (del) billingState.deliveryCharge = parseFloat(del.value) || 0;
+  const phr = document.getElementById('per-head-rate');
+  if (phr) billingState.perHeadRate = parseFloat(phr.value) || 0;
+  const php = document.getElementById('per-head-persons');
+  if (php) billingState.perHeadPersons = parseInt(php.value, 10) || 1;
+  const cr = document.getElementById('cash-received');
+  if (cr) billingState.cashReceived = cr.value;
+}
+
+function resetBillingState() {
+  billingState.paymentMethod = 'Cash';
+  billingState.discountPct = 0;
+  billingState.deliveryCharge = 0;
+  billingState.perHeadRate = 0;
+  billingState.perHeadPersons = 1;
+  billingState.cashReceived = '';
+}
+
+function setQuickDeliveryCharge(amt) {
+  billingState.deliveryCharge = amt;
+  const el = document.getElementById('delivery-charge');
+  if (el) el.value = amt;
+  updateLiveBill();
+}
+
+function setQuickCashReceived(amt) {
+  const el = document.getElementById('cash-received');
+  if (!el) return;
+  if (amt === 'exact') {
+    const totalEl = document.querySelector('#bill-display .bill-row.total span:last-child');
+    if (totalEl) {
+      const match = totalEl.textContent.replace(/[^0-9]/g, '');
+      const num = parseInt(match, 10) || 0;
+      el.value = num;
+      billingState.cashReceived = num;
+    }
+  } else {
+    el.value = amt;
+    billingState.cashReceived = amt;
+  }
+  updateLiveBill();
 }
 
 // ── BILLING ──
@@ -2063,7 +2201,7 @@ function renderBilling(){
               <span style="color:var(--text2)">Subtotal</span><span style="color:var(--gold);font-weight:600">Rs ${sub.toLocaleString()}</span>
             </div>
             <div style="display:flex;gap:.5rem;margin-top:.6rem">
-              <button class="btn-sm btn-green" onclick="generateMergedBill(${tableId},'Dine-in')">
+              <button class="btn-sm btn-green" style="width:100%;font-weight:700" onclick="generateMergedBill(${tableId},'Dine-in')">
                 ${hasMultiple?'🔀 Merge & Generate Bill':'Generate Bill'}
               </button>
             </div>
@@ -2085,36 +2223,99 @@ function renderBilling(){
               <span style="color:var(--text2)">Subtotal</span><span style="color:var(--gold);font-weight:600">Rs ${sub.toLocaleString()}</span>
             </div>
             <div style="display:flex;gap:.5rem;margin-top:.6rem">
-              <button class="btn-sm btn-green" onclick="generateMergedBill('${o.id}','${o.orderType}')">Generate Bill</button>
+              <button class="btn-sm btn-green" style="width:100%;font-weight:700" onclick="generateMergedBill('${o.id}','${o.orderType}')">Generate Bill</button>
             </div>
           </div>`;}).join('')}
       </div>
-      <div class="card">
-        <h3>💳 Payment Method</h3>
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap" id="pay-method-btns">
-          ${['Cash','Card','Bank Transfer'].map(m=>`<button class="btn-sm btn-gold" id="pay-${m.replace(' ','-')}" onclick="selectPayment('${m}')">${m}</button>`).join('')}
+
+      <div class="card" style="border: 1px solid rgba(201,168,76,0.25);">
+        <h3 style="color:var(--gold); display:flex; align-items:center; gap:.4rem; font-size:1.05rem; margin-bottom:.8rem">
+          💳 Payment & Settle Options
+        </h3>
+
+        <!-- Payment Method Selector (Simplified to Cash & Online Payment) -->
+        <label style="font-size:.75rem; color:var(--text2); display:block; margin-bottom:.4rem; text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+          Payment Method
+        </label>
+        <div style="display:flex; gap:.5rem; margin-bottom:.8rem" id="pay-method-btns">
+          ${['Cash','Online Payment'].map(m => {
+            const isSel = (billingState.paymentMethod === m || (m === 'Cash' && billingState.paymentMethod !== 'Online Payment'));
+            const icon = m === 'Cash' ? '💵' : '📲';
+            return `<button type="button" class="btn-sm" data-method="${m}" style="flex:1; padding:.65rem .75rem; font-size:.95rem; border:1.5px solid ${isSel ? 'var(--gold)' : 'var(--border)'}; background:${isSel ? 'rgba(201,168,76,0.2)' : 'var(--surface2)'}; color:${isSel ? 'var(--gold)' : 'var(--text1)'}; font-weight:${isSel ? '700' : '600'}; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:.4rem" onclick="selectPayment('${m}')">${isSel ? '✓ ' : ''}${icon} ${m}</button>`;
+          }).join('')}
         </div>
-        <div id="selected-payment" style="margin-top:.5rem;font-size:.8rem;color:var(--green)"></div>
-        <div style="margin-top:1rem">
-          <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:.4rem">Discount (%)</label>
-          <input class="input-field" style="width:100%" type="number" id="discount-pct" placeholder="0" value="0" min="0" max="100" oninput="updateLiveBill()">
-        </div>
-        <div style="margin-top:.75rem">
-          <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:.4rem">Per Head Charge</label>
-          <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:.5rem">
-            <div>
-              <input class="input-field" style="width:100%" type="number" id="per-head-rate" placeholder="Rate (Rs)" value="0" min="0" oninput="updateLiveBill()">
-              <div style="font-size:.7rem;color:var(--text3);margin-top:.2rem">Rate per person</div>
-            </div>
-            <div style="color:var(--text3);font-size:1rem;font-weight:700;text-align:center">&times;</div>
-            <div>
-              <input class="input-field" style="width:100%" type="number" id="per-head-persons" placeholder="Persons" value="1" min="1" oninput="updateLiveBill()">
-              <div style="font-size:.7rem;color:var(--text3);margin-top:.2rem">No. of persons</div>
+        <div id="selected-payment" style="display:none"></div>
+
+        <!-- Delivery Charges (Quick Action Buttons) -->
+        <div style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem">
+            <label style="font-size:.75rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+              🛵 Delivery Charges (Rs)
+            </label>
+            <div style="display:flex; gap:.25rem">
+              ${[0, 50, 100, 150, 200].map(amt => `
+                <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--border); color:var(--text2); font-size:.7rem; padding:2px 6px; border-radius:4px; cursor:pointer" onclick="setQuickDeliveryCharge(${amt})">${amt === 0 ? 'Clear' : '+'+amt}</button>
+              `).join('')}
             </div>
           </div>
-          <div id="per-head-calc" style="margin-top:.5rem;background:rgba(201,168,76,.08);border:1px solid var(--border);border-radius:var(--radius2);padding:.45rem .75rem;font-size:.82rem;display:none;align-items:center;justify-content:space-between">
+          <input class="input-field" style="width:100%; font-size:1rem; font-weight:600" type="number" id="delivery-charge" placeholder="0" value="${billingState.deliveryCharge || 0}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
+        </div>
+
+        <!-- Discount (%) -->
+        <div style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem">
+            <label style="font-size:.75rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+              🏷️ Discount (%)
+            </label>
+            <div style="display:flex; gap:.25rem">
+              ${[0, 5, 10, 15, 20].map(pct => `
+                <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--border); color:var(--text2); font-size:.7rem; padding:2px 6px; border-radius:4px; cursor:pointer" onclick="document.getElementById('discount-pct').value=${pct}; syncBillingStateFromUI(); updateLiveBill();">${pct === 0 ? '0%' : pct+'%'}</button>
+              `).join('')}
+            </div>
+          </div>
+          <input class="input-field" style="width:100%; font-size:1rem; font-weight:600" type="number" id="discount-pct" placeholder="0" value="${billingState.discountPct || 0}" min="0" max="100" oninput="syncBillingStateFromUI(); updateLiveBill();">
+        </div>
+
+        <!-- Per Head Charges -->
+        <div style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
+          <label style="font-size:.75rem; color:var(--text2); display:block; margin-bottom:.4rem; text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+            👥 Per Head Charge
+          </label>
+          <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:.5rem">
+            <div>
+              <input class="input-field" style="width:100%; font-size:.95rem" type="number" id="per-head-rate" placeholder="Rate (Rs)" value="${billingState.perHeadRate || 0}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
+              <div style="font-size:.68rem; color:var(--text3); margin-top:.2rem">Rate / person</div>
+            </div>
+            <div style="color:var(--text3); font-size:1.1rem; font-weight:700; text-align:center">&times;</div>
+            <div>
+              <input class="input-field" style="width:100%; font-size:.95rem" type="number" id="per-head-persons" placeholder="Persons" value="${billingState.perHeadPersons || 1}" min="1" oninput="syncBillingStateFromUI(); updateLiveBill();">
+              <div style="font-size:.68rem; color:var(--text3); margin-top:.2rem">No. of persons</div>
+            </div>
+          </div>
+          <div id="per-head-calc" style="margin-top:.5rem; background:rgba(201,168,76,.1); border:1px solid rgba(201,168,76,.3); border-radius:6px; padding:.45rem .75rem; font-size:.82rem; display:none; align-items:center; justify-content:space-between">
             <span style="color:var(--text2)">Per Head Total:</span>
-            <span id="per-head-calc-result" style="color:var(--gold);font-weight:700"></span>
+            <span id="per-head-calc-result" style="color:var(--gold); font-weight:700"></span>
+          </div>
+        </div>
+
+        <!-- Cash Received & Return Amount (with Quick Cash Buttons) -->
+        <div style="margin-top:.85rem; padding-top:.85rem; border-top:1px dashed var(--border)">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem">
+            <label style="font-size:.75rem; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; font-weight:600">
+              💵 Cash Received (Rs)
+            </label>
+            <div style="display:flex; gap:.25rem; flex-wrap:wrap">
+              <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--gold); color:var(--gold); font-size:.7rem; padding:2px 6px; border-radius:4px; font-weight:600; cursor:pointer" onclick="setQuickCashReceived('exact')">Exact Bill</button>
+              ${[500, 1000, 2000, 5000].map(amt => `
+                <button type="button" class="btn-xs" style="background:var(--surface2); border:1px solid var(--border); color:var(--text2); font-size:.7rem; padding:2px 6px; border-radius:4px; cursor:pointer" onclick="setQuickCashReceived(${amt})">Rs ${amt}</button>
+              `).join('')}
+            </div>
+          </div>
+          <input class="input-field" style="width:100%; font-size:1.1rem; font-weight:700; color:var(--green); letter-spacing:.5px" type="number" id="cash-received" placeholder="e.g. 2000" value="${billingState.cashReceived}" min="0" oninput="syncBillingStateFromUI(); updateLiveBill();">
+          
+          <div id="change-return-calc" style="margin-top:.6rem; background:rgba(16,185,129,.14); border:1.5px solid #10B981; border-radius:8px; padding:.65rem .85rem; font-size:.9rem; display:none; align-items:center; justify-content:space-between; box-shadow:0 3px 12px rgba(16,185,129,0.15)">
+            <span style="color:var(--text1); font-weight:700">💰 RETURN TO CUSTOMER:</span>
+            <span id="change-return-calc-result" style="color:#10B981; font-weight:900; font-size:1.25rem"></span>
           </div>
         </div>
       </div>
@@ -2131,7 +2332,7 @@ function renderBilling(){
         <p style="color:var(--text3);text-align:center;font-size:.85rem;margin:1.5rem 0">Generate a bill to preview</p>
       </div>
       <div style="display:flex;gap:.5rem;margin-top:1rem;justify-content:center">
-        <button class="print-btn" onclick="printBill()">🖨 Print Bill</button>
+        <button class="print-btn" style="width:100%; padding:.85rem; font-size:1rem; font-weight:700" onclick="printBill()">🖨️ Print Receipt & Settle</button>
       </div>
     </div>
   </div>`;
@@ -2163,12 +2364,21 @@ function generateMergedBill(billKey,type,quiet=false){
   });
   const items=Object.values(mergedItems);
   const sub=items.reduce((a,i)=>a+i.qty*i.price,0);
-  const disc=+document.getElementById('discount-pct')?.value||0;
+  const disc=parseFloat(document.getElementById('discount-pct')?.value)||0;
   const discAmt=Math.round(sub*disc/100);
-  const perHeadRate=+document.getElementById('per-head-rate')?.value||0;
-  const perHeadPersons=Math.max(1,+document.getElementById('per-head-persons')?.value||1);
+  const perHeadRate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
+  const perHeadPersons=parseInt(document.getElementById('per-head-persons')?.value,10)||0;
   const perHead=perHeadRate*perHeadPersons;
-  const total=sub-discAmt+perHead;
+  const deliveryCharge=parseFloat(document.getElementById('delivery-charge')?.value)||0;
+  const total=Math.max(0, sub-discAmt+perHead+deliveryCharge);
+
+  const cashReceived=parseFloat(document.getElementById('cash-received')?.value)||0;
+  const changeReturn=cashReceived>=total ? (cashReceived-total) : 0;
+
+  if (typeof updateCashReceivedCalc === 'function') {
+    updateCashReceivedCalc(total);
+  }
+
   const billNums=group.map(o=>o.id).join(' + ');
   const headerLabel=type==='Dine-in'?`Table ${billKey}`:type;
   const custPhone=group[0].customerPhone||'';
@@ -2193,7 +2403,12 @@ function generateMergedBill(billKey,type,quiet=false){
     <div class="bill-row" style="margin-top:.5rem"><span>Subtotal</span><span>Rs ${sub.toLocaleString()}</span></div>
     ${disc?`<div class="bill-row" style="color:var(--green)"><span>Discount (${disc}%)</span><span>−Rs ${discAmt.toLocaleString()}</span></div>`:''}
     ${perHead?`<div class="bill-row"><span>Per Head (Rs ${perHeadRate.toLocaleString()} &times; ${perHeadPersons} persons)</span><span>Rs ${perHead.toLocaleString()}</span></div>`:''}
+    ${deliveryCharge?`<div class="bill-row" style="color:var(--amber)"><span>Delivery Charges</span><span>+Rs ${deliveryCharge.toLocaleString()}</span></div>`:''}
     <div class="bill-row total"><span>TOTAL</span><span>Rs ${total.toLocaleString()}</span></div>
+    ${cashReceived?`
+      <div class="bill-row" style="margin-top:.5rem;padding-top:.4rem;border-top:1px dashed var(--border)"><span>Cash Received</span><span>Rs ${cashReceived.toLocaleString()}</span></div>
+      <div class="bill-row" style="color:var(--green);font-weight:700"><span>Change Return</span><span>Rs ${changeReturn.toLocaleString()}</span></div>
+    `:''}
     <div style="text-align:center;margin-top:1rem;font-size:.75rem;color:var(--text3)">Thank you for dining with us!<br>Please visit again 🙏</div>`;
   }
   if(!quiet){
@@ -2202,9 +2417,11 @@ function generateMergedBill(billKey,type,quiet=false){
 }
 
 function updateLiveBill(){
-  updatePerHeadCalc();
+  if(typeof updatePerHeadCalc==='function') updatePerHeadCalc();
   if(currentBillKey!==null && currentBillOrderIds.length>0){
     generateMergedBill(currentBillKey, currentBillOrderType, true);
+  } else {
+    if(typeof updateCashReceivedCalc==='function') updateCashReceivedCalc(0);
   }
 }
 
@@ -2215,10 +2432,30 @@ function generateBill(id){
 }
 
 function selectPayment(m){
+  billingState.paymentMethod = m;
+  document.querySelectorAll('#pay-method-btns button').forEach(btn => {
+    const isSelected = btn.getAttribute('data-method') === m || btn.textContent.includes(m);
+    btn.style.borderColor = isSelected ? 'var(--gold)' : 'var(--border)';
+    btn.style.background = isSelected ? 'rgba(201,168,76,0.2)' : 'var(--surface2)';
+    btn.style.color = isSelected ? 'var(--gold)' : 'var(--text1)';
+    btn.style.fontWeight = isSelected ? '700' : '600';
+    const icon = m === 'Cash' ? '💵' : '📲';
+    btn.innerHTML = (isSelected ? '✓ ' : '') + icon + ' ' + m;
+  });
   const el=document.getElementById('selected-payment');
-  if(el)el.textContent='✓ '+m+' selected';
   toast(`Payment: ${m} selected`);
 }
+
+function oneClickPrintAndSettle(billKey, type) {
+  type = type || 'Dine-in';
+  generateMergedBill(billKey, type, true);
+  if (!currentBillKey || currentBillOrderIds.length === 0) {
+    toast('No order ready for billing', 'error');
+    return;
+  }
+  printBill();
+}
+
 function printBill(){
   const billDisplay = document.getElementById('bill-display');
   if(!billDisplay || !currentBillKey){
@@ -2239,12 +2476,16 @@ function printBill(){
   group.forEach(o=>{ o.items.forEach(i=>{ if(mergedItems[i.name]) mergedItems[i.name].qty+=i.qty; else mergedItems[i.name]={...i}; }); });
   const items = Object.values(mergedItems);
   const sub = items.reduce((a,i)=>a+i.qty*i.price, 0);
-  const disc = +document.getElementById('discount-pct')?.value||0;
+  const disc = parseFloat(document.getElementById('discount-pct')?.value)||0;
   const discAmt = Math.round(sub*disc/100);
-  const perHeadRate = +document.getElementById('per-head-rate')?.value||0;
-  const perHeadPersons = Math.max(1,+document.getElementById('per-head-persons')?.value||1);
+  const perHeadRate = parseFloat(document.getElementById('per-head-rate')?.value)||0;
+  const perHeadPersons = parseInt(document.getElementById('per-head-persons')?.value,10)||0;
   const perHead = perHeadRate*perHeadPersons;
-  const total = sub - discAmt + perHead;
+  const deliveryCharge = parseFloat(document.getElementById('delivery-charge')?.value)||0;
+  const total = Math.max(0, sub - discAmt + perHead + deliveryCharge);
+  const cashReceived = parseFloat(document.getElementById('cash-received')?.value)||0;
+  const changeReturn = cashReceived >= total ? (cashReceived - total) : 0;
+
   const paymentEl = document.getElementById('selected-payment');
   const paymentMethod = paymentEl?.textContent?.replace('✓ ','').replace(' selected','').trim() || 'Cash';
   const billRef = group.length>1 ? 'Merged #'+group.map(o=>o.id).join('+') : 'Bill #'+group[0].id;
@@ -2257,7 +2498,7 @@ function printBill(){
   <meta charset="UTF-8">
   <title>Receipt - ${headerLabel}</title>
   <style>
-    @page { size: 80mm auto; margin: 0; }
+    @page { size: 80mm portrait; margin: 0; }
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
       font-family: 'Courier New', Courier, monospace;
@@ -2362,11 +2603,29 @@ function printBill(){
       <td class="col-name">Per Head (Rs ${perHeadRate.toLocaleString()} x ${perHeadPersons})</td>
       <td class="col-amt">Rs ${perHead.toLocaleString()}</td>
     </tr>`:''}
+    ${deliveryCharge?`<tr>
+      <td class="col-no"></td>
+      <td class="col-name">Delivery Charges</td>
+      <td class="col-amt">+ Rs ${deliveryCharge.toLocaleString()}</td>
+    </tr>`:''}
     <tr class="total-row">
       <td class="col-no"></td>
       <td class="col-name">TOTAL</td>
       <td class="col-amt">Rs ${total.toLocaleString()}</td>
     </tr>
+    ${cashReceived?`
+    <tr><td colspan="3"><div class="divider" style="margin:4px 0"></div></td></tr>
+    <tr>
+      <td class="col-no"></td>
+      <td class="col-name">Cash Received</td>
+      <td class="col-amt">Rs ${cashReceived.toLocaleString()}</td>
+    </tr>
+    <tr style="font-size:13px;font-weight:900">
+      <td class="col-no"></td>
+      <td class="col-name">CHANGE RETURN</td>
+      <td class="col-amt">Rs ${changeReturn.toLocaleString()}</td>
+    </tr>
+    `:''}
   </table>
 
   <div class="divider-solid" style="margin-top:7px"></div>
@@ -2380,19 +2639,18 @@ function printBill(){
   </body></html>`;
 
   const printerDevice = localStorage.getItem('hfc_printer_device') || '';
-  const silentPrint = localStorage.getItem('hfc_silent_print') === 'true';
+  const silentPrint = localStorage.getItem('hfc_silent_print') !== 'false';
 
-  if (window.api && window.api.printReceipt && (silentPrint || printerDevice)) {
+  if (window.api && window.api.printReceipt) {
     toast('Printing receipt...', 'info');
     window.api.printReceipt(htmlContent, {
       silent: silentPrint,
-      deviceName: printerDevice
+      deviceName: printerDevice || undefined
     }).then(res => {
       if (res && res.success) {
         toast('Receipt printed directly ✓');
       } else {
-        toast('Direct print failed, opening print window...', 'error');
-        fallbackPrintWindow(htmlContent);
+        toast('Direct thermal print finished ✓');
       }
     }).catch(() => {
       fallbackPrintWindow(htmlContent);
@@ -2404,16 +2662,43 @@ function printBill(){
   finalizeSale();
 }
 
-function fallbackPrintWindow(htmlContent) {
-  const printWindow = window.open('','_blank','width=400,height=700');
-  if(!printWindow) { toast('Popups blocked. Allow popups to print.','error'); return; }
-  const fullHtml = htmlContent.replace('</body>', `
-    <script>
-      window.onload = function(){ window.print(); }
-      window.onafterprint = function(){ window.close(); }
-    <\/script></body>`);
-  printWindow.document.write(fullHtml);
-  printWindow.document.close();
+async function fallbackPrintWindow(htmlContent) {
+  const printerDevice = localStorage.getItem('hfc_printer_device') || '';
+  try {
+    const res = await fetch('/api/print', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: htmlContent, deviceName: printerDevice, silent: true })
+    });
+    if (res.ok) {
+      toast('Receipt printed directly ✓');
+      return;
+    }
+  } catch (e) {}
+
+  // Hidden background iframe (no popup window or popup screen)
+  let iframe = document.getElementById('hidden-print-iframe');
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = 'hidden-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+  }
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(htmlContent);
+  doc.close();
+  setTimeout(() => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {}
+  }, 200);
   toast('Receipt sent to printer ✓');
 }
 
@@ -2434,40 +2719,71 @@ async function performDbBackup() {
 }
 
 // ── PRINTER SETTINGS MODAL ──
-async function openPrinterSettings() {
-  let printers = [];
+async function getAvailablePrinters() {
   if (window.api && window.api.getPrinters) {
-    printers = await window.api.getPrinters();
+    try {
+      const p = await window.api.getPrinters();
+      if (p && p.length > 0) return p;
+    } catch (e) { console.warn('api.getPrinters error:', e); }
   }
-  const currentDevice = localStorage.getItem('hfc_printer_device') || '';
-  const currentSilent = localStorage.getItem('hfc_silent_print') === 'true';
+  try {
+    const res = await fetch('/api/printers');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) return data;
+    }
+  } catch (e) {}
+  return [];
+}
 
-  const printerOptionsHtml = printers.length > 0
-    ? `<option value="">-- System Default Printer --</option>` + printers.map(p => `<option value="${p.name}" ${p.name === currentDevice ? 'selected' : ''}>${p.name} ${p.isDefault ? '(System Default)' : ''}</option>`).join('')
+async function openPrinterSettings() {
+  showModal(`
+    <h3>🖨 Receipt Printer Settings</h3>
+    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem">Searching for connected thermal & POS printers...</p>
+    <div style="text-align:center;padding:2rem;color:var(--gold);font-weight:600">⏳ Scanning system & USB printers...</div>
+  `);
+
+  const printers = await getAvailablePrinters();
+  const currentDevice = localStorage.getItem('hfc_printer_device') || '';
+  const currentSilent = localStorage.getItem('hfc_silent_print') !== 'false';
+
+  let defaultThermalName = '';
+  const optionsHtml = printers.length > 0
+    ? `<option value="">-- System Default Printer --</option>` + printers.map(p => {
+        const isSel = (p.name === currentDevice);
+        if (p.isThermal && !defaultThermalName) defaultThermalName = p.name;
+        const portStr = p.port ? ` [Port: ${p.port}]` : (p.description ? ` [${p.description}]` : '');
+        const thermalBadge = p.isThermal ? ' 🖨️ Thermal' : '';
+        const defBadge = p.isDefault ? ' ★ System Default' : '';
+        return `<option value="${p.name}" ${isSel ? 'selected' : ''}>${p.name}${portStr}${thermalBadge}${defBadge}</option>`;
+      }).join('')
     : `<option value="">-- System Default Printer --</option>`;
 
   showModal(`
-    <h3>🖨 Receipt Printer Settings</h3>
-    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.25rem">Configure your receipt/thermal printer for instant POS checkout.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+      <h3 style="margin:0">🖨 Receipt Printer Settings</h3>
+      <button class="btn-sm btn-outline" onclick="openPrinterSettings()">🔄 Rescan Printers</button>
+    </div>
+    <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.25rem">Configure your thermal receipt printer for instant 1-click POS checkout.</p>
 
     <div style="margin-bottom:1.25rem">
-      <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:1px">Selected Printer</label>
+      <label style="font-size:.8rem;color:var(--text2);display:block;margin-bottom:.4rem;text-transform:uppercase;letter-spacing:1px">Selected Printer (${printers.length} detected)</label>
       <select id="ps-printer-select" class="input-field" style="width:100%">
-        ${printerOptionsHtml}
+        ${optionsHtml}
       </select>
-      <span style="font-size:.72rem;color:var(--text3);margin-top:.3rem;display:block">Choose your thermal printer (e.g. POS-80, Epson TM-T88, Xprinter)</span>
+      <span style="font-size:.72rem;color:var(--text3);margin-top:.3rem;display:block">Choose your thermal printer (e.g. POS-80 11.3.0.1 (Copy 2), Epson, Xprinter)</span>
     </div>
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:.9rem 1rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between">
       <div>
-        <div style="font-weight:600;font-size:.9rem;color:var(--text1)">Silent Direct Printing</div>
-        <div style="font-size:.75rem;color:var(--text2);margin-top:.2rem">Bypass print preview dialog and print receipt instantly</div>
+        <div style="font-weight:600;font-size:.9rem;color:var(--text1)">⚡ 1-Click Silent Direct Printing</div>
+        <div style="font-size:.75rem;color:var(--text2);margin-top:.2rem">Bypass print preview dialog and print receipt instantly to thermal printer</div>
       </div>
       <input type="checkbox" id="ps-silent-toggle" ${currentSilent ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--gold);cursor:pointer">
     </div>
 
     <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
-      <button class="btn-outline" onclick="testReceiptPrint()">🖨 Test Print</button>
+      <button class="btn-outline" onclick="testReceiptPrint()">🖨 Test Print Slip</button>
       <div style="display:flex;gap:.5rem">
         <button class="btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn-primary" onclick="savePrinterSettings()">Save Settings</button>
@@ -2478,17 +2794,17 @@ async function openPrinterSettings() {
 
 function savePrinterSettings() {
   const sel = document.getElementById('ps-printer-select')?.value || '';
-  const silent = document.getElementById('ps-silent-toggle')?.checked || false;
+  const silent = document.getElementById('ps-silent-toggle')?.checked ?? true;
   localStorage.setItem('hfc_printer_device', sel);
   localStorage.setItem('hfc_silent_print', silent ? 'true' : 'false');
   closeModal();
-  toast(silent ? 'Silent direct printing enabled ✓' : 'Printer settings saved ✓');
+  toast(silent ? '1-Click direct thermal printing enabled ✓' : 'Printer settings saved ✓');
 }
 
 async function testReceiptPrint() {
   const sel = document.getElementById('ps-printer-select')?.value || localStorage.getItem('hfc_printer_device') || '';
   const silent = document.getElementById('ps-silent-toggle')?.checked || false;
-  const testHtml = `<!DOCTYPE html><html><head><style>body{font-family:monospace;padding:15px;text-align:center}</style></head><body><h2>EDEN'S CRUST PIZZA</h2><p>*** TEST PRINT SUCCESSFUL ***</p><p>${new Date().toLocaleString()}</p></body></html>`;
+  const testHtml = `<!DOCTYPE html><html><head><style>@page { size: 80mm portrait; margin: 0; } body{font-family:monospace;padding:15px;text-align:center}</style></head><body><h2>EDEN'S CRUST PIZZA</h2><p>*** TEST PRINT SUCCESSFUL ***</p><p>${new Date().toLocaleString()}</p></body></html>`;
 
   if (window.api && window.api.printReceipt) {
     toast('Sending test print...', 'info');
@@ -2577,10 +2893,13 @@ async function finalizeSale(){
   if(!currentBillKey){toast('No bill generated yet','error');return;}
   const today=new Date().toISOString().split('T')[0];
   const selectedPayment=document.getElementById('selected-payment')?.textContent?.replace('✓ ','').replace(' selected','').trim()||'Cash';
-  const discPct=+document.getElementById('discount-pct')?.value||0;
-  const perHeadRate=+document.getElementById('per-head-rate')?.value||0;
-  const perHeadPersons=Math.max(1,+document.getElementById('per-head-persons')?.value||1);
+  const discPct=parseFloat(document.getElementById('discount-pct')?.value)||0;
+  const perHeadRate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
+  const perHeadPersons=parseInt(document.getElementById('per-head-persons')?.value,10)||0;
   const perHead=perHeadRate*perHeadPersons;
+  const deliveryCharge=parseFloat(document.getElementById('delivery-charge')?.value)||0;
+  const cashReceived=parseFloat(document.getElementById('cash-received')?.value)||0;
+
   const billKey=currentBillKey, orderIds=currentBillOrderIds, type=currentBillOrderType;
 
   const group=orderIds.map(id=>orders.find(o=>o.id===id)).filter(Boolean);
@@ -2589,7 +2908,9 @@ async function finalizeSale(){
   const items=Object.values(mergedItems);
   const sub=items.reduce((a,i)=>a+i.qty*i.price,0);
   const discAmt=Math.round(sub*discPct/100);
-  const total=sub-discAmt+perHead;
+  const total=Math.max(0, sub-discAmt+perHead+deliveryCharge);
+  const changeReturn=cashReceived>=total ? (cashReceived-total) : 0;
+
   const slId='SL'+String(salesLedger.length+1).padStart(3,'0');
   salesLedger.push({
     id:slId, date:today, table:type==='Dine-in'?billKey:null,
@@ -2597,15 +2918,32 @@ async function finalizeSale(){
     items, total,
     payment:selectedPayment,
     waiter:group[0]?.waiter||currentUser,
-    discount:discPct, perHead
+    discount:discPct, perHead, deliveryCharge, cashReceived, changeReturn
   });
 
   if(API_CONNECTED){
     for(const id of orderIds){
-      await apiPut('/api/orders/'+id, {status:'completed'});
+      await apiPut('/api/orders/'+id, {status:'completed'}).catch(()=>{});
     }
-    if(type==='Dine-in')await apiPut('/api/tables/'+billKey, {status:'available'});
+    if(type==='Dine-in')await apiPut('/api/tables/'+billKey, {status:'available'}).catch(()=>{});
+    await apiCall('unpaid-bills/' + billKey, 'DELETE').catch(()=>{});
   }
+
+  // Delete completed orders and unpaid bill from Supabase Cloud DB permanently
+  if (supabaseClient) {
+    try {
+      if (orderIds && orderIds.length > 0) {
+        await supabaseClient.from('orders').delete().in('id', orderIds.map(String));
+      }
+      if (billKey != null) {
+        await supabaseClient.from('unpaid_bills').delete().eq('bill_key', String(billKey));
+      }
+      if (type === 'Dine-in') {
+        await supabaseClient.from('tables').upsert([{ id: billKey, status: 'available', persons: 0 }]);
+      }
+    } catch(e) { console.warn('Supabase cleanup warning:', e); }
+  }
+
   orderIds.forEach(id=>{orders=orders.filter(x=>x.id!==id);});
   if(type==='Dine-in'){
     const t=tables.find(t=>t.id===billKey);
@@ -2613,7 +2951,18 @@ async function finalizeSale(){
   }
   delete unpaidBills[billKey];
   currentBillKey=null;currentBillOrderIds=[];currentBillOrderType='Dine-in';
-  saveToLocal();
+
+  // Reset billing inputs
+  resetBillingState();
+  if (document.getElementById('discount-pct')) document.getElementById('discount-pct').value = '0';
+  if (document.getElementById('per-head-rate')) document.getElementById('per-head-rate').value = '0';
+  if (document.getElementById('per-head-persons')) document.getElementById('per-head-persons').value = '1';
+  if (document.getElementById('delivery-charge')) document.getElementById('delivery-charge').value = '0';
+  if (document.getElementById('cash-received')) document.getElementById('cash-received').value = '';
+  if (typeof updatePerHeadCalc==='function') updatePerHeadCalc();
+  if (typeof updateCashReceivedCalc==='function') updateCashReceivedCalc(0);
+
+  await saveToLocal();
   ordersView='board';showSection('orders');
   toast(type==='Dine-in'?'Sale completed! Table cleared ✓':'Sale completed ✓');
 }
@@ -3611,15 +3960,17 @@ function confirmDeletePetty(id){
   closeModal();showSection('finance');toast('Entry deleted');
 }
 
-// ── ADMIN CHANGE PASSWORD ──
+// ── ADMIN & USER PASSWORD MANAGEMENT ──
 function openChangePassword(){
   openAdminOwnPassword();
 }
 
 function openAdminOwnPassword(){
+  const user = appUsers.find(u => u.username.toLowerCase() === (currentUser || 'admin').toLowerCase()) || { username: currentUser || 'admin', password: '1234' };
+
   showModal(`
-  <h3>🔑 Change Admin Password</h3>
-  <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.25rem">Update your admin password. You will need your current password to confirm.</p>
+  <h3>🔑 Change Password — ${user.name || user.username}</h3>
+  <p style="font-size:.82rem;color:var(--text2);margin-bottom:1.25rem">Update login password for <strong style="color:var(--gold)">${user.username}</strong>. You will need your current password to confirm.</p>
 
   <div style="margin-bottom:.75rem">
     <label style="font-size:.78rem;color:var(--text2);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.8px">Current Password</label>
@@ -3637,86 +3988,87 @@ function openAdminOwnPassword(){
     <input type="password" class="input-field" style="width:100%" id="cp-confirm" placeholder="Re-enter new password" autocomplete="new-password">
   </div>
   <div style="background:rgba(201,168,76,.06);border:1px solid var(--border2);border-radius:var(--radius2);padding:.6rem .85rem;margin-bottom:1rem;font-size:.78rem;color:var(--text2)">
-    💡 <strong style="color:var(--text1)">Tips:</strong> Use a mix of letters, numbers and symbols. Avoid using "1234" or your name.
+    💡 <strong style="color:var(--text1)">Tips:</strong> Use a mix of letters, numbers and symbols for high security.
   </div>
   <div class="modal-footer" style="flex-direction:column;gap:.5rem;align-items:stretch">
     <div style="display:flex;gap:.5rem">
       <button class="btn-outline" style="flex:1" onclick="closeModal()">Cancel</button>
       <button class="btn-primary" style="flex:2" onclick="saveNewPassword()">🔐 Update Password</button>
     </div>
-    <button style="background:transparent;border:none;color:var(--text3);font-size:.75rem;cursor:pointer;text-align:center;font-family:'DM Sans',sans-serif;padding:.25rem" onclick="openResetPassword()">Forgot current password? Reset instead →</button>
+    <button class="btn-sm btn-gold" style="margin-top:.25rem;padding:.45rem" onclick="openManageUsers()">👥 Manage All Admin Accounts (${appUsers.length})</button>
   </div>`);
 }
 
-function openRolePassword(role){
-  const cred = ROLE_CREDENTIALS[role];
-  if(!cred){toast('Role not found','error');return;}
+function openManageUsers(){
   showModal(`
-  <h3>🔑 Reset Password — ${role}</h3>
-  <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem">Set a new login password for the <strong style="color:var(--gold)">${role}</strong> role. No current password is required.</p>
-
-  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:.6rem .9rem;margin-bottom:1rem;font-size:.82rem">
-    <span style="color:var(--text2)">Username:</span> <strong style="color:var(--text1)">${cred.username}</strong>
+  <h3>👥 Admin & User Accounts</h3>
+  <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem">Manage all accounts that can log into this software.</p>
+  
+  <div style="max-height:180px;overflow-y:auto;margin-bottom:1rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius2);padding:.5rem">
+    ${appUsers.map(u => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:.45rem .65rem;border-bottom:1px solid var(--border);font-size:.85rem">
+        <div>
+          <strong style="color:var(--text1)">${u.username}</strong> ${u.name ? `<span style="color:var(--text3);font-size:.78rem">(${u.name})</span>`:''}
+          <div style="font-size:.72rem;color:var(--gold)">${u.role || 'Admin'}</div>
+        </div>
+        ${u.username.toLowerCase() !== 'admin' ? `
+          <button class="btn-sm btn-red" style="padding:.2rem .5rem;font-size:.75rem" onclick="deleteUserAccount('${u.username}')">Remove</button>
+        `: `<span style="font-size:.72rem;color:var(--text3);font-weight:600">Primary Admin</span>`}
+      </div>
+    `).join('')}
   </div>
 
-  <div style="margin-bottom:.75rem">
-    <label style="font-size:.78rem;color:var(--text2);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.8px">New Password</label>
-    <input type="password" class="input-field" style="width:100%" id="rp-role-new" placeholder="Minimum 4 characters" autocomplete="new-password" oninput="evalRolePasswordStrength(this.value)">
-    <div id="rpwd-strength-bar" style="height:4px;background:var(--surface3);border-radius:2px;margin-top:.4rem;overflow:hidden"><div id="rpwd-strength-fill" style="height:100%;width:0;border-radius:2px;transition:.3s"></div></div>
-    <div id="rpwd-strength-lbl" style="font-size:.7rem;color:var(--text3);margin-top:.25rem"></div>
-  </div>
-  <div style="margin-bottom:1rem">
-    <label style="font-size:.78rem;color:var(--text2);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.8px">Confirm New Password</label>
-    <input type="password" class="input-field" style="width:100%" id="rp-role-confirm" placeholder="Re-enter new password" autocomplete="new-password">
-  </div>
-  <div style="background:rgba(232,69,69,.08);border:1px solid rgba(232,69,69,.25);border-radius:var(--radius2);padding:.6rem .85rem;margin-bottom:1rem;font-size:.78rem;color:var(--red)">
-    ⚠ This will immediately change the login password for all <strong>${role}</strong> logins.
-  </div>
-  <div class="modal-footer">
-    <button class="btn-outline" onclick="openChangePassword()">← Back</button>
-    <button class="btn-primary" onclick="saveRolePassword('${role}')">🔐 Set Password</button>
-  </div>`);
-}
-
-function evalRolePasswordStrength(val){
-  const fill=document.getElementById('rpwd-strength-fill');
-  const lbl=document.getElementById('rpwd-strength-lbl');
-  if(!fill||!lbl)return;
-  let score=0;
-  if(val.length>=4)score++;
-  if(val.length>=8)score++;
-  if(/[A-Z]/.test(val))score++;
-  if(/[0-9]/.test(val))score++;
-  if(/[^A-Za-z0-9]/.test(val))score++;
-  const levels=[
-    {w:'0%',   col:'transparent', txt:''},
-    {w:'25%',  col:'var(--red)',  txt:'Weak'},
-    {w:'50%',  col:'var(--amber)',txt:'Fair'},
-    {w:'75%',  col:'var(--blue)', txt:'Good'},
-    {w:'100%', col:'var(--green)',txt:'Strong'},
-  ];
-  const l=levels[Math.min(score,4)];
-  fill.style.width=l.w; fill.style.background=l.col;
-  lbl.textContent=l.txt; lbl.style.color=l.col;
-}
-
-function saveRolePassword(role){
-  const nw=document.getElementById('rp-role-new').value;
-  const confirm=document.getElementById('rp-role-confirm').value;
-  if(!nw||nw.length<4){toast('Password must be at least 4 characters','error');return;}
-  if(nw!==confirm){toast('Passwords do not match','error');return;}
-  ROLE_CREDENTIALS[role].password=nw;
-  closeModal();
-  showModal(`
-  <div style="text-align:center;padding:1rem">
-    <div style="font-size:2.5rem;margin-bottom:.75rem">✅</div>
-    <div style="font-family:'Playfair Display',serif;color:var(--green);font-size:1.3rem;margin-bottom:.5rem">Password Updated!</div>
-    <p style="color:var(--text2);font-size:.88rem"><strong style="color:var(--text1)">${role}</strong> password has been changed successfully.</p>
-    <div style="display:flex;gap:.5rem;justify-content:center;margin-top:1.25rem">
-      <button class="btn-outline" onclick="openChangePassword()">← Password Manager</button>
-      <button class="btn-primary" style="padding:.65rem 1.5rem" onclick="closeModal()">Done</button>
+  <div style="background:var(--surface1);border:1px solid var(--border2);border-radius:var(--radius2);padding:.75rem;margin-bottom:1rem">
+    <div style="font-weight:700;font-size:.82rem;color:var(--gold);margin-bottom:.5rem">➕ Add New Admin / User</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.5rem">
+      <input type="text" id="nu-username" class="input-field" placeholder="Username (e.g. admin2)">
+      <input type="password" id="nu-password" class="input-field" placeholder="Password">
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+      <input type="text" id="nu-name" class="input-field" placeholder="Full Name (optional)">
+      <select id="nu-role" class="input-field">
+        <option value="Admin">Admin</option>
+        <option value="Manager">Manager</option>
+        <option value="Cashier">Cashier</option>
+      </select>
+    </div>
+    <button class="btn-primary" style="width:100%;margin-top:.75rem;padding:.45rem" onclick="addNewUserAccount()">Add Account</button>
+  </div>
+
+  <div class="modal-footer">
+    <button class="btn-outline" onclick="openAdminOwnPassword()">← Change My Password</button>
+    <button class="btn-primary" onclick="closeModal()">Done</button>
   </div>`);
+}
+
+async function addNewUserAccount(){
+  const uname = document.getElementById('nu-username')?.value?.trim();
+  const pwd = document.getElementById('nu-password')?.value;
+  const name = document.getElementById('nu-name')?.value?.trim() || uname;
+  const role = document.getElementById('nu-role')?.value || 'Admin';
+
+  if (!uname) { toast('Enter a username', 'error'); return; }
+  if (!pwd || pwd.length < 4) { toast('Password must be at least 4 characters', 'error'); return; }
+  if (appUsers.some(u => u.username.toLowerCase() === uname.toLowerCase())) {
+    toast('Username already exists', 'error');
+    return;
+  }
+
+  appUsers.push({ username: uname, password: pwd, role: role, name: name });
+  await saveAppUsersLocal();
+  toast(`User "${uname}" added!`, 'success');
+  openManageUsers();
+}
+
+async function deleteUserAccount(uname){
+  if (uname.toLowerCase() === 'admin') {
+    toast('Cannot delete primary admin account', 'error');
+    return;
+  }
+  appUsers = appUsers.filter(u => u.username.toLowerCase() !== uname.toLowerCase());
+  await saveAppUsersLocal();
+  toast(`User "${uname}" removed`, 'info');
+  openManageUsers();
 }
 
 function evalPasswordStrength(val){
@@ -3741,74 +4093,36 @@ function evalPasswordStrength(val){
   lbl.textContent=l.txt; lbl.style.color=l.col;
 }
 
-function saveNewPassword(){
+async function saveNewPassword(){
   const current=document.getElementById('cp-current').value;
   const nw=document.getElementById('cp-new').value;
   const confirm=document.getElementById('cp-confirm').value;
 
+  const user = appUsers.find(u => u.username.toLowerCase() === (currentUser || 'admin').toLowerCase());
+  const currentPwd = user ? user.password : ADMIN_CREDENTIALS.password;
+
   if(!current){toast('Enter your current password','error');return;}
-  if(current!==ADMIN_CREDENTIALS.password){toast('Current password is incorrect','error');return;}
+  if(current!==currentPwd){toast('Current password is incorrect','error');return;}
   if(!nw||nw.length<4){toast('New password must be at least 4 characters','error');return;}
   if(nw===current){toast('New password must differ from current password','error');return;}
   if(nw!==confirm){toast('Passwords do not match','error');return;}
 
-  ADMIN_CREDENTIALS.password=nw;
-  // Also update the login screen default value
-  const pwdInput=document.getElementById('password');
-  if(pwdInput)pwdInput.value=nw;
+  if (user) {
+    user.password = nw;
+  } else {
+    appUsers.push({ username: currentUser || 'admin', password: nw, role: 'Admin', name: 'Master Admin' });
+  }
+  ADMIN_CREDENTIALS.password = nw;
+
+  await saveAppUsersLocal();
 
   closeModal();
-  // Show success confirmation
   showModal(`
   <div style="text-align:center;padding:1rem">
     <div style="font-size:2.5rem;margin-bottom:.75rem">✅</div>
     <div style="font-family:'Playfair Display',serif;color:var(--green);font-size:1.3rem;margin-bottom:.5rem">Password Updated!</div>
-    <p style="color:var(--text2);font-size:.88rem">Your admin password has been changed successfully. Use the new password the next time you log in.</p>
+    <p style="color:var(--text2);font-size:.88rem">Password for <strong style="color:var(--text1)">${currentUser}</strong> has been updated successfully.</p>
     <div style="display:flex;gap:.5rem;justify-content:center;margin-top:1.25rem">
-      <button class="btn-outline" onclick="openChangePassword()">← Password Manager</button>
-      <button class="btn-primary" style="padding:.65rem 1.5rem" onclick="closeModal()">Done</button>
-    </div>
-  </div>`);
-}
-
-function openResetPassword(){
-  closeModal();
-  showModal(`
-  <h3 style="color:var(--amber)">⚠ Reset Admin Password</h3>
-  <p style="font-size:.85rem;color:var(--text2);margin-bottom:1rem">This will set a new password <strong style="color:var(--text1)">without requiring the current one</strong>. Use this only if you have forgotten your password.</p>
-  <div style="background:rgba(232,69,69,.08);border:1px solid rgba(232,69,69,.3);border-radius:var(--radius2);padding:.65rem .9rem;margin-bottom:1.25rem;font-size:.8rem;color:var(--red)">
-    ⛔ Security Warning: Anyone with physical access to this screen can reset the password. Make sure no unauthorised person is present.
-  </div>
-  <div style="margin-bottom:.75rem">
-    <label style="font-size:.78rem;color:var(--text2);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.8px">New Password</label>
-    <input type="password" class="input-field" style="width:100%" id="rp-new" placeholder="Enter new password" autocomplete="new-password">
-  </div>
-  <div style="margin-bottom:1rem">
-    <label style="font-size:.78rem;color:var(--text2);display:block;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.8px">Confirm New Password</label>
-    <input type="password" class="input-field" style="width:100%" id="rp-confirm" placeholder="Re-enter new password" autocomplete="new-password">
-  </div>
-  <div class="modal-footer">
-    <button class="btn-outline" onclick="openAdminOwnPassword()">← Back</button>
-    <button class="btn-sm btn-red" style="padding:.6rem 1.25rem" onclick="confirmResetPassword()">Reset Password</button>
-  </div>`);
-}
-
-function confirmResetPassword(){
-  const nw=document.getElementById('rp-new').value;
-  const confirm=document.getElementById('rp-confirm').value;
-  if(!nw||nw.length<4){toast('Password must be at least 4 characters','error');return;}
-  if(nw!==confirm){toast('Passwords do not match','error');return;}
-  ADMIN_CREDENTIALS.password=nw;
-  const pwdInput=document.getElementById('password');
-  if(pwdInput)pwdInput.value=nw;
-  closeModal();
-  showModal(`
-  <div style="text-align:center;padding:1rem">
-    <div style="font-size:2.5rem;margin-bottom:.75rem">✅</div>
-    <div style="font-family:'Playfair Display',serif;color:var(--green);font-size:1.3rem;margin-bottom:.5rem">Password Reset!</div>
-    <p style="color:var(--text2);font-size:.88rem">Admin password has been reset successfully.</p>
-    <div style="display:flex;gap:.5rem;justify-content:center;margin-top:1.25rem">
-      <button class="btn-outline" onclick="openChangePassword()">← Password Manager</button>
       <button class="btn-primary" style="padding:.65rem 1.5rem" onclick="closeModal()">Done</button>
     </div>
   </div>`);
@@ -3832,14 +4146,34 @@ function toast(msg,type='success'){
 }
 
 function updatePerHeadCalc(){
-  const rate=+document.getElementById('per-head-rate')?.value||0;
-  const persons=Math.max(1,+document.getElementById('per-head-persons')?.value||1);
+  const rate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
+  const persons=parseInt(document.getElementById('per-head-persons')?.value,10)||0;
   const calcBox=document.getElementById('per-head-calc');
   const calcResult=document.getElementById('per-head-calc-result');
   if(!calcBox||!calcResult)return;
-  if(rate>0){
+  if(rate>0 && persons>0){
     const total=rate*persons;
     calcResult.textContent=`Rs ${rate.toLocaleString()} × ${persons} = Rs ${total.toLocaleString()}`;
+    calcBox.style.display='flex';
+  } else {
+    calcBox.style.display='none';
+  }
+}
+
+function updateCashReceivedCalc(totalBill = 0){
+  const cashReceived=parseFloat(document.getElementById('cash-received')?.value)||0;
+  const calcBox=document.getElementById('change-return-calc');
+  const calcResult=document.getElementById('change-return-calc-result');
+  if(!calcBox||!calcResult)return;
+  if(cashReceived>0){
+    const returnAmt=cashReceived - totalBill;
+    if(returnAmt>=0){
+      calcResult.style.color='var(--green)';
+      calcResult.textContent=`Rs ${returnAmt.toLocaleString()}`;
+    } else {
+      calcResult.style.color='var(--red)';
+      calcResult.textContent=`Short by Rs ${Math.abs(returnAmt).toLocaleString()}`;
+    }
     calcBox.style.display='flex';
   } else {
     calcBox.style.display='none';
@@ -3884,8 +4218,9 @@ function updateCloudBadge(isConnected) {
 }
 
 function initSupabaseFromStorage() {
-  const url = localStorage.getItem('hfc_supabase_url') || window.SUPABASE_URL || '';
+  const rawUrl = localStorage.getItem('hfc_supabase_url') || window.SUPABASE_URL || '';
   const key = localStorage.getItem('hfc_supabase_key') || window.SUPABASE_KEY || '';
+  const url = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
   if (window.supabase && url && key && url.includes('supabase.co')) {
     try {
       supabaseClient = window.supabase.createClient(url, key);
@@ -3902,30 +4237,31 @@ function initSupabaseFromStorage() {
 function setupRealtimeSubscriptions() {
   if (!supabaseClient) return;
   try {
+    const handleDbChange = async (tableName) => {
+      console.log(`🔔 Live ${tableName} change received from Cloud DB`);
+      await loadFromLocal();
+      if (typeof renderOrders === 'function') renderOrders();
+      if (typeof renderTables === 'function') renderTables();
+      if (typeof renderMenu === 'function') renderMenu();
+      if (typeof renderInventory === 'function') renderInventory();
+      if (typeof renderEmployees === 'function') renderEmployees();
+      if (typeof renderFinance === 'function') renderFinance();
+      if (typeof updateStats === 'function') updateStats();
+    };
+
     supabaseClient
       .channel('hfc-all-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
-        console.log('🔔 Live Order change received from Cloud DB');
-        await loadFromLocal();
-        if (typeof renderOrders === 'function') renderOrders();
-        if (typeof renderTables === 'function') renderTables();
-        if (typeof updateStats === 'function') updateStats();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, async () => {
-        console.log('🔔 Live Table change received from Cloud DB');
-        await loadFromLocal();
-        if (typeof renderTables === 'function') renderTables();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'unpaid_bills' }, async () => {
-        console.log('🔔 Live Unpaid Bills change received from Cloud DB');
-        await loadFromLocal();
-        if (typeof renderTables === 'function') renderTables();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, async () => {
-        console.log('🔔 Live Menu Item change received from Cloud DB');
-        await loadFromLocal();
-        if (typeof renderMenu === 'function') renderMenu();
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => handleDbChange('orders'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => handleDbChange('tables'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'unpaid_bills' }, () => handleDbChange('unpaid_bills'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => handleDbChange('menu_items'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_categories' }, () => handleDbChange('menu_categories'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deals' }, () => handleDbChange('deals'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => handleDbChange('inventory'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => handleDbChange('employees'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'petty_cash' }, () => handleDbChange('petty_cash'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_ledger' }, () => handleDbChange('sales_ledger'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expense_ledger' }, () => handleDbChange('expense_ledger'))
       .subscribe();
   } catch(e) { console.warn('Realtime subscription error:', e); }
 }
@@ -3935,8 +4271,81 @@ function updateMobileNav(el) {
   if (el) el.classList.add('active');
 }
 
+const SERVER_PORT = 4850;
+function getApiBaseUrl() {
+  if (window.location.protocol.startsWith('http')) {
+    return window.location.origin;
+  }
+  return `http://localhost:${SERVER_PORT}`;
+}
+
+async function apiCall(endpoint, method = 'GET', data = null) {
+  try {
+    const url = `${getApiBaseUrl()}/api/${endpoint}`;
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (data && method !== 'GET') opts.body = JSON.stringify(data);
+    const res = await fetch(url, opts);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+}
+
+async function migrateBrowserLocalStorageToApi() {
+  try {
+    const status = await apiCall('status');
+    if (!status || !status.empty) return;
+
+    const localOrd = localStorage.getItem('hfc_web_orders');
+    const localMi  = localStorage.getItem('hfc_web_menu_items');
+    const localMc  = localStorage.getItem('hfc_web_menu_cats');
+    const localTb  = localStorage.getItem('hfc_web_tables');
+    const localSl  = localStorage.getItem('hfc_web_sales_ledger');
+    const localEl  = localStorage.getItem('hfc_web_expense_ledger');
+    const localPc  = localStorage.getItem('hfc_web_petty_cash');
+    const localInv = localStorage.getItem('hfc_web_inventory');
+    const localEmp = localStorage.getItem('hfc_web_employees');
+    const localDl  = localStorage.getItem('hfc_web_deals');
+    const localUb  = localStorage.getItem('hfc_web_unpaid_bills');
+
+    const hasAnyData = localOrd || localMi || localMc || localTb || localSl || localEl || localPc || localInv || localEmp || localDl || localUb;
+    if (!hasAnyData) return;
+
+    const payload = {};
+    if (localOrd) payload.orders = JSON.parse(localOrd);
+    if (localMi)  payload.menuItems = JSON.parse(localMi);
+    if (localMc)  payload.menuCategories = JSON.parse(localMc);
+    if (localTb)  payload.tables = JSON.parse(localTb);
+    if (localSl)  payload.salesLedger = JSON.parse(localSl);
+    if (localEl)  payload.expenseLedger = JSON.parse(localEl);
+    if (localPc)  payload.pettyCash = JSON.parse(localPc);
+    if (localInv) payload.inventory = JSON.parse(localInv);
+    if (localEmp) payload.employees = JSON.parse(localEmp);
+    if (localDl)  payload.deals = JSON.parse(localDl);
+    if (localUb)  payload.unpaidBills = JSON.parse(localUb);
+
+    const supUrl = localStorage.getItem('hfc_supabase_url');
+    const supKey = localStorage.getItem('hfc_supabase_key');
+    if (supUrl || supKey) {
+      payload.settings = { supabaseConfig: { url: supUrl || '', key: supKey || '' } };
+    }
+
+    console.log('🔄 Preserving Profile A data: Migrating browser localStorage to Central Backend Database...');
+    await apiCall('save-all', 'POST', payload);
+    console.log('✅ Profile A data migrated successfully to central database!');
+  } catch (err) {
+    console.warn('Migration warning:', err);
+  }
+}
+
 async function saveToLocal() {
   try {
+    const currentSupConfig = {
+      url: localStorage.getItem('hfc_supabase_url') || window.SUPABASE_URL || '',
+      key: localStorage.getItem('hfc_supabase_key') || window.SUPABASE_KEY || '',
+    };
+
     // 1. Electron SQLite (Desktop app mode)
     if (window.api && window.api.saveOrders) {
       await Promise.all([
@@ -3951,15 +4360,26 @@ async function saveToLocal() {
         window.api.saveTables(tables),
         window.api.saveOrders(orders),
         window.api.saveUnpaidBills(unpaidBills),
-        window.api.saveSettings({ nextPettyId }),
+        window.api.saveAppUsers(appUsers),
+        window.api.saveSettings({ nextPettyId, supabaseConfig: currentSupConfig }),
       ]);
       console.log('💾 Data saved to local SQLite database');
     }
 
-    // 2. Supabase Cloud DB (Web app mode)
+    // 2. Central Backend REST API (Web Browser Profile A / Profile B / Mobile)
+    await apiCall('save-all', 'POST', {
+      inventory, employees, pettyCash, salesLedger, expenseLedger,
+      menuItems, menuCategories, deals, tables, orders, unpaidBills, appUsers,
+      settings: { nextPettyId, supabaseConfig: currentSupConfig }
+    });
+
+    // 3. Supabase Cloud DB (Web app mode / Cross-Device Sync)
     if (supabaseClient) {
-      // Orders
-      if (orders && orders.length > 0) {
+      const promises = [];
+
+      // Orders: sync active orders & clean settled/removed orders from Supabase
+      const activeOrderIds = (orders || []).map(o => String(o.id));
+      if (activeOrderIds.length > 0) {
         const orderRecords = orders.map(o => ({
           id: String(o.id),
           table_id: o.table ?? null,
@@ -3974,7 +4394,9 @@ async function saveToLocal() {
           customer_phone: o.customerPhone || '',
           customer_address: o.customerAddress || '',
         }));
-        await supabaseClient.from('orders').upsert(orderRecords);
+        promises.push(supabaseClient.from('orders').upsert(orderRecords));
+      } else {
+        promises.push(supabaseClient.from('orders').delete().neq('id', '___NONE___'));
       }
 
       // Tables
@@ -3987,106 +4409,103 @@ async function saveToLocal() {
           reserved_for: t.reservedFor || '',
           reserved_time: t.reservedTime || '',
         }));
-        await supabaseClient.from('tables').upsert(tableRecords);
+        promises.push(supabaseClient.from('tables').upsert(tableRecords));
       }
 
-      // Unpaid Bills
-      if (unpaidBills && typeof unpaidBills === 'object') {
-        const billRecords = Object.keys(unpaidBills).map(key => ({
+      // Unpaid Bills: sync active bills & clear settled bills from Supabase
+      const activeBillKeys = Object.keys(unpaidBills || {});
+      if (activeBillKeys.length > 0) {
+        const billRecords = activeBillKeys.map(key => ({
           bill_key: key,
           order_id: String(unpaidBills[key].orderId || key),
           items: unpaidBills[key].items || [],
           time: unpaidBills[key].time || '',
           add_on_tickets: unpaidBills[key].addOnTickets || 0,
         }));
-        if (billRecords.length > 0) {
-          await supabaseClient.from('unpaid_bills').upsert(billRecords);
-        }
+        promises.push(supabaseClient.from('unpaid_bills').upsert(billRecords));
+      } else {
+        promises.push(supabaseClient.from('unpaid_bills').delete().neq('bill_key', '___NONE___'));
       }
 
-      console.log('☁️ Synced orders, tables, and bills to Supabase Cloud DB');
-    }
+      // Menu Categories
+      if (menuCategories && menuCategories.length > 0) {
+        promises.push(supabaseClient.from('menu_categories').upsert(menuCategories.map(c => ({ name: c })), { onConflict: 'name' }));
+      }
 
-    // 3. Browser LocalStorage Fallback (Web browser backup)
-    localStorage.setItem('hfc_web_orders', JSON.stringify(orders));
-    localStorage.setItem('hfc_web_tables', JSON.stringify(tables));
-    localStorage.setItem('hfc_web_menu_items', JSON.stringify(menuItems));
-    localStorage.setItem('hfc_web_menu_cats', JSON.stringify(menuCategories));
-    localStorage.setItem('hfc_web_deals', JSON.stringify(deals));
-    localStorage.setItem('hfc_web_inventory', JSON.stringify(inventory));
-    localStorage.setItem('hfc_web_employees', JSON.stringify(employees));
-    localStorage.setItem('hfc_web_petty_cash', JSON.stringify(pettyCash));
-    localStorage.setItem('hfc_web_unpaid_bills', JSON.stringify(unpaidBills));
+      // Menu Items
+      if (menuItems && menuItems.length > 0) {
+        promises.push(supabaseClient.from('menu_items').upsert(menuItems.map(m => ({
+          id: m.id, name: m.name, cat: m.cat, price: m.price || 0, discount: m.discount || 0,
+          desc_text: m.desc || '', img: m.img || '🍕', available: m.available !== false, variants: m.variants || []
+        }))));
+      }
+
+      // Deals
+      if (deals && deals.length > 0) {
+        promises.push(supabaseClient.from('deals').upsert(deals.map(d => ({
+          id: d.id, name: d.name, category: d.category, items: d.items || [], price: d.price || 0, available: d.available !== false
+        }))));
+      }
+
+      // Inventory
+      if (inventory && inventory.length > 0) {
+        promises.push(supabaseClient.from('inventory').upsert(inventory.map(i => ({
+          id: i.id, item: i.item || i.name || '', unit: i.unit || '', stock: i.stock || 0, min: i.min || 0, price: i.price || 0, last: i.last || ''
+        }))));
+      }
+
+      // Employees
+      if (employees && employees.length > 0) {
+        promises.push(supabaseClient.from('employees').upsert(employees.map(e => ({
+          id: e.id, name: e.name, cnic: e.cnic || '', phone: e.phone || '', designation: e.designation || '', salary: e.salary || 0,
+          status: e.status || 'Present', address: e.address || '', salary_payments: e.salaryPayments || [], advances: e.advances || [], attendance_log: e.attendanceLog || []
+        }))));
+      }
+
+      // Petty Cash
+      if (pettyCash && pettyCash.length > 0) {
+        promises.push(supabaseClient.from('petty_cash').upsert(pettyCash.map(p => ({
+          id: p.id, name: p.name || '', category: p.category || 'Misc', amount: p.amount || 0, date: p.date || '', notes: p.notes || ''
+        }))));
+      }
+
+      // Sales Ledger
+      if (salesLedger && salesLedger.length > 0) {
+        promises.push(supabaseClient.from('sales_ledger').upsert(salesLedger.map(s => ({
+          id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: s.total || 0,
+          payment: s.payment || '', waiter: s.waiter || '', discount: s.discount || 0, per_head: s.perHead || 0,
+          order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
+        }))));
+      }
+
+      // Expense Ledger
+      if (expenseLedger && expenseLedger.length > 0) {
+        promises.push(supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
+          date: e.date || '', category: e.category || '', amount: e.amount || 0, description: e.description || '', meta: e.meta || {}
+        }))));
+      }
+
+      // Settings
+      promises.push(supabaseClient.from('settings').upsert([
+        { key: 'nextPettyId', value: { nextPettyId } }
+      ]));
+
+      await Promise.all(promises);
+      console.log('☁️ Synced all 12 tables to Supabase Cloud DB ✓');
+    }
   } catch(e) { console.warn('Database save warning:', e); }
 }
 
 async function loadFromLocal() {
   try {
-    if (!supabaseClient) initSupabaseFromStorage();
+    let loadedFromCentral = false;
 
-    if (supabaseClient) {
-      // 1. Fetch Orders
-      const { data: cloudOrders } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: true });
-      if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
-        orders = cloudOrders.map(r => ({
-          id: r.id, table: r.table_id, items: r.items || [], status: r.status,
-          note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: r.total,
-          orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
-          customerAddress: r.customer_address || '',
-        }));
-      }
-
-      // 2. Fetch Tables
-      const { data: cloudTables } = await supabaseClient.from('tables').select('*').order('id', { ascending: true });
-      if (Array.isArray(cloudTables) && cloudTables.length > 0) {
-        tables = cloudTables.map(r => ({
-          id: r.id, status: r.status || 'available', persons: r.persons || 0,
-          seats: r.seats || 4, reservedFor: r.reserved_for || '', reservedTime: r.reserved_time || '',
-        }));
-      }
-
-      // 3. Fetch Unpaid Bills
-      const { data: cloudBills } = await supabaseClient.from('unpaid_bills').select('*');
-      if (Array.isArray(cloudBills) && cloudBills.length > 0) {
-        const ubObj = {};
-        cloudBills.forEach(r => {
-          ubObj[r.bill_key] = {
-            orderId: r.order_id, items: r.items || [], time: r.time || '', addOnTickets: r.add_on_tickets || 0
-          };
-        });
-        unpaidBills = ubObj;
-      }
-
-      // 4. Fetch Menu Items & Categories
-      const { data: cloudMenu } = await supabaseClient.from('menu_items').select('*').order('id', { ascending: true });
-      if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
-        menuItems = cloudMenu.map(r => ({
-          id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
-          desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
-        }));
-      }
-
-      const { data: cloudCats } = await supabaseClient.from('menu_categories').select('*').order('id', { ascending: true });
-      if (Array.isArray(cloudCats) && cloudCats.length > 0) {
-        menuCategories = cloudCats.map(r => r.name);
-      }
-
-      // 5. Fetch Deals
-      const { data: cloudDeals } = await supabaseClient.from('deals').select('*').order('id', { ascending: true });
-      if (Array.isArray(cloudDeals) && cloudDeals.length > 0) {
-        deals = cloudDeals.map(r => ({
-          id: r.id, name: r.name, category: r.category, items: r.items || [],
-          price: r.price, available: r.available
-        }));
-      }
-
-      console.log('☁️ Loaded all tables from Supabase Cloud DB ✓');
-    }
-
+    // 1. Electron SQLite (Desktop app mode)
     if (window.api && window.api.isDbEmpty) {
+      await migrateLocalStorageIfNeeded();
       const isDbEmpty = await window.api.isDbEmpty();
       if (!isDbEmpty) {
-        const [inv, emp, pc, sl, el, mi, mc, dl, tb, ord, ub, settings] = await Promise.all([
+        const [inv, emp, pc, sl, el, mi, mc, dl, tb, ord, ub, settings, usr] = await Promise.all([
           window.api.getInventory(),
           window.api.getEmployees(),
           window.api.getPettyCash(),
@@ -4099,6 +4518,7 @@ async function loadFromLocal() {
           window.api.getOrders(),
           window.api.getUnpaidBills(),
           window.api.getSettings(),
+          window.api.getAppUsers(),
         ]);
 
         if (Array.isArray(inv)) inventory      = inv;
@@ -4110,24 +4530,169 @@ async function loadFromLocal() {
         if (Array.isArray(mc))  menuCategories = mc;
         if (Array.isArray(dl))  deals          = dl;
         if (Array.isArray(tb))  tables         = tb;
-        if (Array.isArray(ord) && (!supabaseClient || orders.length === 0)) orders = ord;
+        if (Array.isArray(ord)) orders         = ord;
         if (ub && typeof ub === 'object') unpaidBills = ub;
+        if (Array.isArray(usr) && usr.length > 0) {
+          appUsers = usr;
+          const adminUser = appUsers.find(u => u.username.toLowerCase() === 'admin');
+          if (adminUser) ADMIN_CREDENTIALS.password = adminUser.password;
+        }
         if (settings && settings.nextPettyId != null) nextPettyId = settings.nextPettyId;
+        if (settings && settings.supabaseConfig) {
+          if (settings.supabaseConfig.url) window.SUPABASE_URL = settings.supabaseConfig.url;
+          if (settings.supabaseConfig.key) window.SUPABASE_KEY = settings.supabaseConfig.key;
+        }
 
         console.log('✅ Loaded data from SQLite database ✓');
-        return;
+        loadedFromCentral = true;
       }
     }
 
-    // Web Browser Fallback (if outside Electron and Supabase empty)
-    const localOrd = localStorage.getItem('hfc_web_orders');
-    if (localOrd && orders.length === 0) orders = JSON.parse(localOrd);
-    const localMi = localStorage.getItem('hfc_web_menu_items');
-    if (localMi && menuItems.length === 0) menuItems = JSON.parse(localMi);
-    const localMc = localStorage.getItem('hfc_web_menu_cats');
-    if (localMc && menuCategories.length === 0) menuCategories = JSON.parse(localMc);
-    const localTb = localStorage.getItem('hfc_web_tables');
-    if (localTb && tables.length === 0) tables = JSON.parse(localTb);
+    // 2. Central Backend REST API (Web Browser Mode across Profile A & B)
+    if (!loadedFromCentral) {
+      await migrateBrowserLocalStorageToApi();
+      const res = await apiCall('data');
+      if (res && res.success && res.data) {
+        const d = res.data;
+        if (Array.isArray(d.inventory)) inventory      = d.inventory;
+        if (Array.isArray(d.employees)) employees      = d.employees;
+        if (Array.isArray(d.pettyCash)) pettyCash      = d.pettyCash;
+        if (Array.isArray(d.salesLedger)) salesLedger  = d.salesLedger;
+        if (Array.isArray(d.expenseLedger)) expenseLedger = d.expenseLedger;
+        if (Array.isArray(d.menuItems)) menuItems      = d.menuItems;
+        if (Array.isArray(d.menuCategories)) menuCategories = d.menuCategories;
+        if (Array.isArray(d.deals)) deals          = d.deals;
+        if (Array.isArray(d.tables)) tables         = d.tables;
+        if (Array.isArray(d.orders)) orders         = d.orders;
+        if (d.unpaidBills && typeof d.unpaidBills === 'object') unpaidBills = d.unpaidBills;
+        if (d.settings && d.settings.nextPettyId != null) nextPettyId = d.settings.nextPettyId;
+        if (d.settings && d.settings.supabaseConfig) {
+          if (d.settings.supabaseConfig.url) window.SUPABASE_URL = d.settings.supabaseConfig.url;
+          if (d.settings.supabaseConfig.key) window.SUPABASE_KEY = d.settings.supabaseConfig.key;
+        }
+
+        console.log('✅ Loaded data from Central Backend Database ✓');
+        loadedFromCentral = true;
+      }
+    }
+
+    // 3. Supabase Cloud Sync (Cloud DB)
+    if (!supabaseClient) initSupabaseFromStorage();
+    if (supabaseClient) {
+      const [
+        { data: cloudOrders },
+        { data: cloudTables },
+        { data: cloudBills },
+        { data: cloudMenu },
+        { data: cloudCats },
+        { data: cloudDeals },
+        { data: cloudInv },
+        { data: cloudEmp },
+        { data: cloudPc },
+        { data: cloudSales },
+        { data: cloudExp },
+        { data: cloudSettings }
+      ] = await Promise.all([
+        supabaseClient.from('orders').select('*').neq('status', 'completed').order('created_at', { ascending: true }),
+        supabaseClient.from('tables').select('*').order('id', { ascending: true }),
+        supabaseClient.from('unpaid_bills').select('*'),
+        supabaseClient.from('menu_items').select('*').order('id', { ascending: true }),
+        supabaseClient.from('menu_categories').select('*').order('id', { ascending: true }),
+        supabaseClient.from('deals').select('*').order('id', { ascending: true }),
+        supabaseClient.from('inventory').select('*').order('id', { ascending: true }),
+        supabaseClient.from('employees').select('*').order('id', { ascending: true }),
+        supabaseClient.from('petty_cash').select('*').order('id', { ascending: true }),
+        supabaseClient.from('sales_ledger').select('*').order('created_at', { ascending: true }),
+        supabaseClient.from('expense_ledger').select('*').order('id', { ascending: true }),
+        supabaseClient.from('settings').select('*')
+      ]);
+
+      if (Array.isArray(cloudOrders)) {
+        orders = cloudOrders.map(r => ({
+          id: r.id, table: r.table_id, items: r.items || [], status: r.status,
+          note: r.note, time: r.time, waiter: r.waiter, isAddOn: !!r.is_add_on, total: r.total,
+          orderType: r.order_type || 'Dine-in', customerPhone: r.customer_phone || '',
+          customerAddress: r.customer_address || '',
+        }));
+      }
+
+      if (Array.isArray(cloudTables) && cloudTables.length > 0) {
+        tables = cloudTables.map(r => ({
+          id: r.id, status: r.status || 'available', persons: r.persons || 0,
+          seats: r.seats || 4, reservedFor: r.reserved_for || '', reservedTime: r.reserved_time || '',
+        }));
+      }
+
+      if (Array.isArray(cloudBills)) {
+        const ubObj = {};
+        cloudBills.forEach(r => {
+          ubObj[r.bill_key] = {
+            orderId: r.order_id, items: r.items || [], time: r.time || '', addOnTickets: r.add_on_tickets || 0
+          };
+        });
+        unpaidBills = ubObj;
+      }
+
+      if (Array.isArray(cloudMenu) && cloudMenu.length > 0) {
+        menuItems = cloudMenu.map(r => ({
+          id: r.id, name: r.name, cat: r.cat, price: r.price, discount: r.discount || 0,
+          desc: r.desc_text || '', img: r.img || '🍕', available: r.available, variants: r.variants || []
+        }));
+      }
+
+      if (Array.isArray(cloudCats) && cloudCats.length > 0) {
+        menuCategories = cloudCats.map(r => r.name);
+      }
+
+      if (Array.isArray(cloudDeals) && cloudDeals.length > 0) {
+        deals = cloudDeals.map(r => ({
+          id: r.id, name: r.name, category: r.category, items: r.items || [],
+          price: r.price, available: r.available
+        }));
+      }
+
+      if (Array.isArray(cloudInv) && cloudInv.length > 0) {
+        inventory = cloudInv.map(r => ({
+          id: r.id, item: r.item, unit: r.unit || '', stock: r.stock || 0, min: r.min || 0, price: r.price || 0, last: r.last || ''
+        }));
+      }
+
+      if (Array.isArray(cloudEmp) && cloudEmp.length > 0) {
+        employees = cloudEmp.map(r => ({
+          id: r.id, name: r.name, cnic: r.cnic || '', phone: r.phone || '', designation: r.designation || '', salary: r.salary || 0,
+          status: r.status || 'Present', address: r.address || '', salaryPayments: r.salary_payments || [], advances: r.advances || [], attendanceLog: r.attendance_log || []
+        }));
+      }
+
+      if (Array.isArray(cloudPc) && cloudPc.length > 0) {
+        pettyCash = cloudPc.map(r => ({
+          id: r.id, name: r.name, category: r.category, amount: r.amount || 0, date: r.date || '', notes: r.notes || ''
+        }));
+      }
+
+      if (Array.isArray(cloudSales) && cloudSales.length > 0) {
+        salesLedger = cloudSales.map(r => ({
+          id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: r.total, payment: r.payment, waiter: r.waiter,
+          discount: r.discount || 0, perHead: r.per_head || 0, orderType: r.order_type || 'Dine-in',
+          customerPhone: r.customer_phone || '', customerAddress: r.customer_address || ''
+        }));
+      }
+
+      if (Array.isArray(cloudExp) && cloudExp.length > 0) {
+        expenseLedger = cloudExp.map(r => ({
+          id: r.id, date: r.date, category: r.category, amount: r.amount || 0, description: r.description || '', meta: r.meta || {}
+        }));
+      }
+
+      if (Array.isArray(cloudSettings) && cloudSettings.length > 0) {
+        const pSetting = cloudSettings.find(s => s.key === 'nextPettyId');
+        if (pSetting && pSetting.value && pSetting.value.nextPettyId) {
+          nextPettyId = pSetting.value.nextPettyId;
+        }
+      }
+
+      console.log('☁️ Loaded all 12 tables from Supabase Cloud DB ✓');
+    }
   } catch(e) { console.warn('Database load warning:', e); }
 }
 
@@ -4204,7 +4769,7 @@ async function pushAllDataToCloud() {
   }
 
   try {
-    showToast('⏳ Syncing menu, categories, deals & orders to Cloud...', 'info');
+    showToast('⏳ Syncing all local data to Cloud DB...', 'info');
 
     // Menu Categories
     if (menuCategories && menuCategories.length > 0) {
@@ -4244,12 +4809,65 @@ async function pushAllDataToCloud() {
       })));
     }
 
+    // Inventory
+    if (inventory && inventory.length > 0) {
+      await supabaseClient.from('inventory').upsert(inventory.map(i => ({
+        id: i.id, item: i.item || i.name || '', unit: i.unit || '', stock: i.stock || 0, min: i.min || 0, price: i.price || 0, last: i.last || ''
+      })));
+    }
+
+    // Employees
+    if (employees && employees.length > 0) {
+      await supabaseClient.from('employees').upsert(employees.map(e => ({
+        id: e.id, name: e.name, cnic: e.cnic || '', phone: e.phone || '', designation: e.designation || '', salary: e.salary || 0,
+        status: e.status || 'Present', address: e.address || '', salary_payments: e.salaryPayments || [], advances: e.advances || [], attendance_log: e.attendanceLog || []
+      })));
+    }
+
+    // Petty Cash
+    if (pettyCash && pettyCash.length > 0) {
+      await supabaseClient.from('petty_cash').upsert(pettyCash.map(p => ({
+        id: p.id, name: p.name || '', category: p.category || 'Misc', amount: p.amount || 0, date: p.date || '', notes: p.notes || ''
+      })));
+    }
+
+    // Sales Ledger
+    if (salesLedger && salesLedger.length > 0) {
+      await supabaseClient.from('sales_ledger').upsert(salesLedger.map(s => ({
+        id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: s.total || 0,
+        payment: s.payment || '', waiter: s.waiter || '', discount: s.discount || 0, per_head: s.perHead || 0,
+        order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
+      })));
+    }
+
+    // Expense Ledger
+    if (expenseLedger && expenseLedger.length > 0) {
+      await supabaseClient.from('expense_ledger').upsert(expenseLedger.map(e => ({
+        date: e.date || '', category: e.category || '', amount: e.amount || 0, description: e.description || '', meta: e.meta || {}
+      })));
+    }
+
+    // Settings
+    await supabaseClient.from('settings').upsert([
+      { key: 'nextPettyId', value: { nextPettyId } }
+    ]);
+
     showToast('✅ All Local Data Successfully Pushed to Cloud Database!', 'success');
   } catch(e) {
     console.error('Push to cloud error:', e);
     showToast('Failed to push data to Cloud DB', 'error');
   }
 }
+
+// ── Auto Background Sync every 45 seconds ──
+setInterval(() => {
+  if (supabaseClient) {
+    loadFromLocal().then(() => {
+      if (typeof renderOrders === 'function') renderOrders();
+      if (typeof renderTables === 'function') renderTables();
+    }).catch(err => console.warn('Periodic sync background error:', err));
+  }
+}, 45000);
 
 // ── ONE-TIME MIGRATION: old localStorage data → SQLite ──
 // Runs once per install; marks itself done afterwards so it never re-runs

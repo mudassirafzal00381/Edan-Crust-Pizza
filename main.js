@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const database = require('./database');
 const { registerIpcHandlers } = require('./ipc');
+const { startServer } = require('./server');
 
 // One-time carry-over of the SQLite database from the old "Desi Bites RMS"
 // userData folder into the new "HFC Pizza" one — the rebrand changes
@@ -82,6 +83,7 @@ app.whenReady().then(() => {
 
   migrateUserDataFolderIfNeeded();
   database.initDatabase();
+  startServer().catch(err => console.warn('Backend server start error:', err));
   registerIpcHandlers(database);
 
   createSplashWindow();

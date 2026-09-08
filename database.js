@@ -13,13 +13,63 @@ const { app } = require('electron');
 const Database = require('better-sqlite3');
 
 let db;
+let currentDbPath = '';
+
+function getSharedDbDirectory() {
+  let dbDir = '';
+  try {
+    if (app && typeof app.getPath === 'function') {
+      try {
+        dbDir = path.join(app.getPath('commonUserData'), 'EdensCrustPizza');
+      } catch (e) {}
+      if (!dbDir) {
+        const commonDir = process.env.ALLUSERSPROFILE || process.env.ProgramData;
+        if (commonDir) {
+          dbDir = path.join(commonDir, 'EdensCrustPizza');
+        }
+      }
+      if (!dbDir) {
+        dbDir = app.getPath('userData');
+      }
+    }
+  } catch (err) {
+    dbDir = path.join(__dirname, 'data');
+  }
+  if (!dbDir) {
+    dbDir = path.join(__dirname, 'data');
+  }
+  return dbDir;
+}
 
 function initDatabase() {
-  const dbDir = app.getPath('userData');
+  const dbDir = getSharedDbDirectory();
   if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
-  const dbPath = path.join(dbDir, 'desi-bites.db');
 
-  db = new Database(dbPath);
+  const sharedPath = path.join(dbDir, 'edens-crust.db');
+
+  if (!fs.existsSync(sharedPath)) {
+    try {
+      const userDir = (app && typeof app.getPath === 'function') ? app.getPath('userData') : '';
+      if (userDir && userDir !== dbDir) {
+        const legacy1 = path.join(userDir, 'desi-bites.db');
+        const legacy2 = path.join(userDir, 'edens-crust.db');
+        if (fs.existsSync(legacy2)) {
+          fs.copyFileSync(legacy2, sharedPath);
+        } else if (fs.existsSync(legacy1)) {
+          fs.copyFileSync(legacy1, sharedPath);
+        }
+      }
+      const sameDirLegacy = path.join(dbDir, 'desi-bites.db');
+      if (!fs.existsSync(sharedPath) && fs.existsSync(sameDirLegacy)) {
+        fs.copyFileSync(sameDirLegacy, sharedPath);
+      }
+    } catch (e) {
+      console.warn('Migration copy warning:', e);
+    }
+  }
+
+  currentDbPath = sharedPath;
+  db = new Database(sharedPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
@@ -222,6 +272,13 @@ function createSchema() {
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS app_users (
+      username TEXT PRIMARY KEY,
+      password TEXT NOT NULL,
+      role     TEXT NOT NULL DEFAULT 'Admin',
+      name     TEXT DEFAULT ''
     );
   `);
 }
@@ -472,28 +529,69 @@ function saveExpenseLedger(expenseLedger) {
 }
 
 // ── settings (key/value) ──
-const SETTINGS_KEYS = ['nextPettyId'];
 function getSettings() {
   const result = {};
-  const stmt = db.prepare('SELECT value FROM settings WHERE key = ?');
-  for (const key of SETTINGS_KEYS) {
-    const row = stmt.get(key);
-    result[key] = row ? JSON.parse(row.value) : null;
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  for (const row of rows) {
+    try {
+      result[row.key] = JSON.parse(row.value);
+    } catch (e) {
+      result[row.key] = row.value;
+    }
   }
   return result;
 }
 function saveSettings(settings) {
-  const tx = db.transaction((settings) => {
+  if (!settings || typeof settings !== 'object') return;
+  const tx = db.transaction((settingsObj) => {
     const upsert = db.prepare(
       `INSERT INTO settings (key,value) VALUES (@key,@value)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`
     );
-    for (const key of SETTINGS_KEYS) {
-      if (settings[key] !== undefined) upsert.run({ key, value: JSON.stringify(settings[key]) });
+    for (const [key, val] of Object.entries(settingsObj)) {
+      if (val !== undefined) {
+        upsert.run({ key, value: JSON.stringify(val) });
+      }
     }
   });
-  tx(settings || {});
+  tx(settings);
 }
+
+function getAllData() {
+  return {
+    inventory: getInventory(),
+    employees: getEmployees(),
+    pettyCash: getPettyCash(),
+    salesLedger: getSalesLedger(),
+    expenseLedger: getExpenseLedger(),
+    menuItems: getMenuItems(),
+    menuCategories: getMenuCategories(),
+    deals: getDeals(),
+    tables: getTables(),
+    orders: getOrders(),
+    unpaidBills: getUnpaidBills(),
+    settings: getSettings(),
+    appUsers: getAppUsers(),
+  };
+}
+
+function saveAllData(data) {
+  if (!data || typeof data !== 'object') return;
+  if (data.inventory) saveInventory(data.inventory);
+  if (data.employees) saveEmployees(data.employees);
+  if (data.pettyCash) savePettyCash(data.pettyCash);
+  if (data.salesLedger) saveSalesLedger(data.salesLedger);
+  if (data.expenseLedger) saveExpenseLedger(data.expenseLedger);
+  if (data.menuItems) saveMenuItems(data.menuItems);
+  if (data.menuCategories) saveMenuCategories(data.menuCategories);
+  if (data.deals) saveDeals(data.deals);
+  if (data.tables) saveTables(data.tables);
+  if (data.orders) saveOrders(data.orders);
+  if (data.unpaidBills) saveUnpaidBills(data.unpaidBills);
+  if (data.settings) saveSettings(data.settings);
+  if (data.appUsers) saveAppUsers(data.appUsers);
+}
+
 
 // ── empty-database check (used to guard the one-time localStorage migration) ──
 function isDbEmpty() {
@@ -534,8 +632,7 @@ function backupDatabase(destPath) {
     return db.backup(destPath);
   } catch (err) {
     db.pragma('wal_checkpoint(TRUNCATE)');
-    const dbDir = app.getPath('userData');
-    const dbPath = path.join(dbDir, 'desi-bites.db');
+    const dbPath = currentDbPath || path.join(app.getPath('userData'), 'desi-bites.db');
     fs.copyFileSync(dbPath, destPath);
     return Promise.resolve(destPath);
   }
@@ -559,8 +656,26 @@ function clearAllData() {
   tx();
 }
 
+function getAppUsers() {
+  const rows = db.prepare('SELECT * FROM app_users').all();
+  if (rows.length === 0) {
+    db.prepare('INSERT INTO app_users (username, password, role, name) VALUES (?, ?, ?, ?)').run('admin', '1234', 'Admin', 'Master Admin');
+    return [{ username: 'admin', password: '1234', role: 'Admin', name: 'Master Admin' }];
+  }
+  return rows;
+}
+
+function saveAppUsers(users) {
+  replaceAll(
+    'app_users', users,
+    `INSERT INTO app_users (username, password, role, name) VALUES (@username, @password, @role, @name)`,
+    u => ({ username: u.username, password: u.password, role: u.role || 'Admin', name: u.name || u.username })
+  );
+}
+
 module.exports = {
   initDatabase,
+  getSharedDbDirectory,
   backupDatabase,
   getMenuItems, saveMenuItems,
   getMenuCategories, saveMenuCategories,
@@ -574,6 +689,8 @@ module.exports = {
   getSalesLedger, saveSalesLedger,
   getExpenseLedger, saveExpenseLedger,
   getSettings, saveSettings,
+  getAppUsers, saveAppUsers,
+  getAllData, saveAllData,
   isDbEmpty,
   clearAllData,
   migrateFromLocalStorage,
