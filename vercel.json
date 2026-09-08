@@ -1,19 +1,7 @@
 {
-  "version": 2,
+  "outputDirectory": "renderer",
   "cleanUrls": true,
-  "builds": [
-    { "src": "renderer/index.html", "use": "@vercel/static" },
-    { "src": "renderer/supabase-config.js", "use": "@vercel/static" },
-    { "src": "renderer/splash.html", "use": "@vercel/static" },
-    { "src": "renderer/logo.png", "use": "@vercel/static" },
-    { "src": "logo.png", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "src": "/logo.png", "dest": "/logo.png" },
-    { "src": "/renderer/logo.png", "dest": "/renderer/logo.png" },
-    { "src": "/supabase-config.js", "dest": "/renderer/supabase-config.js" },
-    { "src": "/renderer/supabase-config.js", "dest": "/renderer/supabase-config.js" },
-    { "src": "/splash.html", "dest": "/renderer/splash.html" },
-    { "src": "/(.*)", "dest": "/renderer/index.html" }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
