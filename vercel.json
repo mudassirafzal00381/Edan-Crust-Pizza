@@ -1,7 +1,9 @@
 {
-  "outputDirectory": "renderer",
+  "buildCommand": "",
+  "framework": null,
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/", "destination": "/renderer/index.html" },
+    { "source": "/(.*)", "destination": "/renderer/$1" }
   ]
 }
