@@ -3503,6 +3503,7 @@ function renderFinance(){
   <div class="section-header">
     <div><div class="section-title">Finance & Reports</div><div class="section-sub">Sales analytics, expenses & petty cash</div></div>
     <div style="display:flex;gap:.5rem">
+      <button class="print-btn" onclick="purgeLastTwoDaysData()" style="background:rgba(232,69,69,.15);border:1px solid rgba(232,69,69,.4);color:var(--red)">🗑 Delete Last 2 Days Data</button>
       <button class="print-btn" onclick="exportActiveFinanceCSV()">📊 Export CSV</button>
       <button class="print-btn" onclick="window.print()">🖨 Print Report</button>
     </div>
@@ -3515,6 +3516,53 @@ function renderFinance(){
       </button>`).join('')}
   </div>
   ${activeFinanceTab==='overview' ? renderFinanceOverview() : renderPettyCash()}`;
+}
+
+function purgeLastTwoDaysData() {
+  showModal(`
+  <h3 style="color:var(--red)">🗑 Confirm Delete — Last 2 Days Data</h3>
+  <p style="color:var(--text2);margin-bottom:1rem">Are you sure you want to completely remove all orders and transactions from the <strong>last 2 days (today and yesterday)</strong>? Older historical records will not be touched.</p>
+  <div class="modal-footer">
+    <button class="btn-outline" onclick="closeModal()">Cancel</button>
+    <button class="btn-sm btn-red" style="padding:.6rem 1.25rem" onclick="confirmPurgeLastTwoDaysData()">Delete Last 2 Days Data</button>
+  </div>`);
+}
+
+async function confirmPurgeLastTwoDaysData(silent = false) {
+  try {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    // Filter out salesLedger transactions from today and yesterday
+    salesLedger = salesLedger.filter(s => s.date !== todayStr && s.date !== yesterdayStr);
+
+    // Active orders and unpaid bills from last 2 days
+    orders = orders.filter(o => o.time && !o.time.includes(todayStr) && !o.time.includes(yesterdayStr));
+    unpaidBills = {};
+
+    // Save updated data to SQLite and server
+    await saveToLocal();
+
+    // Delete from Supabase Cloud DB if connected
+    if (supabaseClient) {
+      try {
+        await supabaseClient.from('sales_ledger').delete().in('date', [todayStr, yesterdayStr]);
+        await supabaseClient.from('orders').delete().neq('id', '0');
+        await supabaseClient.from('unpaid_bills').delete().neq('bill_key', '0');
+      } catch (e) {
+        console.warn('Supabase purge error:', e);
+      }
+    }
+
+    if (!silent) {
+      closeModal();
+      showSection('finance');
+      toast('Last 2 days orders & transactions removed completely ✓', 'success');
+    }
+  } catch (err) {
+    console.error('Purge error:', err);
+    if (!silent) toast('Purge error: ' + err.message, 'error');
+  }
 }
 
 function switchFinanceTab(tab){
@@ -3578,11 +3626,6 @@ function renderFinanceOverview(){
       <div class="num" style="${monthSales===0?'color:var(--text3)':''}">Rs ${monthSales.toLocaleString()}</div>
       <div class="lbl">This Month</div>
       <div class="sub">${salesLedger.filter(s=>s.date.startsWith(month_str)).length} transaction(s)</div>
-    </div>
-    <div class="stat-card">
-      <div class="num" style="color:${netProfit>=0?'var(--green)':'var(--red)'}">Rs ${netProfit.toLocaleString()}</div>
-      <div class="lbl">Net Profit (Month)</div>
-      <div class="sub" style="color:${netProfit>=0?'var(--green)':'var(--red)'}">${monthSales>0?((netProfit/monthSales*100).toFixed(1))+'% margin':'No sales yet'}</div>
     </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
