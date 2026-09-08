@@ -1,4 +1,4 @@
 @echo off
-title HFC Pizza RMS
+title Eden's Crust Pizza RMS
 cd /d "%~dp0"
 npm start

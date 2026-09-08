@@ -95,7 +95,7 @@ function registerIpcHandlers(db) {
       try {
         const { canceled, filePath } = await dialog.showSaveDialog({
           title: 'Save CSV Report',
-          defaultPath: defaultName || 'hfc-report.csv',
+          defaultPath: defaultName || 'edens-crust-report.csv',
           filters: [
             { name: 'CSV Document (*.csv)', extensions: ['csv'] },
             { name: 'All Files', extensions: ['*'] }
