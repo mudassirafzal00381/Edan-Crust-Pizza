@@ -594,6 +594,25 @@ let nextPettyId = 1;
 
 // ── SALES LEDGER (historical completed sales for date-range reporting) ──
 let salesLedger = []; // Populated when sales are completed
+// Sales recorded on this device that haven't been confirmed in the cloud DB yet.
+// Background reloads (realtime / 45s sync) must not drop them before they land.
+const pendingSaleIds = new Set();
+
+// Calendar date (YYYY-MM-DD) in the device's local time. toISOString() is UTC,
+// which filed late-night sales under the wrong day (Pakistan is UTC+5).
+function localDateStr(d = new Date()){
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+// Cloud NUMERIC columns can come back as strings; never let "+" concatenate them.
+function saleTotal(s){ return Number(s && s.total) || 0; }
+// Union of two sales lists by id; entries in `primary` win on conflicts.
+function mergeSales(primary, extra){
+  const out = Array.isArray(primary) ? primary.slice() : [];
+  const seen = new Set(out.map(x => String(x.id)));
+  (extra || []).forEach(x => { if (!seen.has(String(x.id))) { seen.add(String(x.id)); out.push(x); } });
+  return out;
+}
 let expenseLedger = []; // Populated by salary payments and manual entries
 let dateReportFrom = '';
 let dateReportTo   = '';
@@ -752,10 +771,10 @@ function orderLabel(o){
 
 // ── DASHBOARD ──
 function renderDashboard(){
-  const todayStr = new Date().toISOString().split('T')[0];
-  const yesterdayStr = new Date(Date.now()-86400000).toISOString().split('T')[0];
-  const totalSales = salesLedger.filter(s=>s.date===todayStr).reduce((a,s)=>a+s.total,0);
-  const yesterdaySales = salesLedger.filter(s=>s.date===yesterdayStr).reduce((a,s)=>a+s.total,0);
+  const todayStr = localDateStr();
+  const yesterdayStr = localDateStr(new Date(Date.now()-86400000));
+  const totalSales = salesLedger.filter(s=>s.date===todayStr).reduce((a,s)=>a+saleTotal(s),0);
+  const yesterdaySales = salesLedger.filter(s=>s.date===yesterdayStr).reduce((a,s)=>a+saleTotal(s),0);
   const salesTrend = yesterdaySales>0 ? Math.round((totalSales-yesterdaySales)/yesterdaySales*100) : null;
   const ordersToday = orders.length + salesLedger.filter(s=>s.date===todayStr).length;
   const pending = orders.filter(o=>o.status==='pending').length;
@@ -1649,7 +1668,7 @@ function holdOrder(){toast('Order held. You can resume later.');}
 
 // ── MANAGER ──
 function renderManager(){
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr();
   const pendingCount = orders.filter(o=>o.status==='pending').length;
   const readyCount = orders.filter(o=>o.status==='ready'||o.status==='preparing'||o.status==='confirmed').length;
   // Completed orders are removed from `orders` (see finalizeSale()) and
@@ -2843,7 +2862,7 @@ async function exportSalesCSV() {
     csv += `"${s.id}","${s.date}","${s.orderType || 'Dine-in'}","${tableRef}","${phone}","${addr}","${itemSummary}",${sub},${disc},${perHead},${s.total},"${s.payment || 'Cash'}","${s.waiter || ''}"\n`;
   });
 
-  const defaultName = `EdensCrust_Sales_Report_${new Date().toISOString().split('T')[0]}.csv`;
+  const defaultName = `EdensCrust_Sales_Report_${localDateStr()}.csv`;
   if (window.api && window.api.saveCSV) {
     const res = await window.api.saveCSV({ defaultName, content: csv });
     if (res.canceled) return;
@@ -2866,7 +2885,7 @@ async function exportPettyCashCSV() {
     csv += `"${p.id}","${p.date}","${p.category}","${desc}",${p.amount},"${notes}"\n`;
   });
 
-  const defaultName = `EdensCrust_PettyCash_Report_${new Date().toISOString().split('T')[0]}.csv`;
+  const defaultName = `EdensCrust_PettyCash_Report_${localDateStr()}.csv`;
   if (window.api && window.api.saveCSV) {
     const res = await window.api.saveCSV({ defaultName, content: csv });
     if (res.canceled) return;
@@ -2891,7 +2910,7 @@ function downloadCSVFallback(content, fileName) {
 
 async function finalizeSale(){
   if(!currentBillKey){toast('No bill generated yet','error');return;}
-  const today=new Date().toISOString().split('T')[0];
+  const today=localDateStr();
   const selectedPayment=document.getElementById('selected-payment')?.textContent?.replace('✓ ','').replace(' selected','').trim()||'Cash';
   const discPct=parseFloat(document.getElementById('discount-pct')?.value)||0;
   const perHeadRate=parseFloat(document.getElementById('per-head-rate')?.value)||0;
@@ -2911,7 +2930,10 @@ async function finalizeSale(){
   const total=Math.max(0, sub-discAmt+perHead+deliveryCharge);
   const changeReturn=cashReceived>=total ? (cashReceived-total) : 0;
 
-  const slId='SL'+String(salesLedger.length+1).padStart(3,'0');
+  // Unique across devices and after deletions; length-based ids collided,
+  // overwriting an earlier sale in the cloud and failing the SQLite save.
+  const slId='SL'+Date.now().toString(36).toUpperCase()+Math.random().toString(36).slice(2,5).toUpperCase();
+  pendingSaleIds.add(slId);
   salesLedger.push({
     id:slId, date:today, table:type==='Dine-in'?billKey:null,
     orderType:type, customerPhone:group[0]?.customerPhone||'', customerAddress:group[0]?.customerAddress||'',
@@ -3064,7 +3086,7 @@ async function confirmUpdateStock(id, add){
   const newStock = add ? (currentStock + amt) : Math.max(0, currentStock - amt);
   i.stock = newStock;
   i.qty = newStock;
-  i.last = new Date().toISOString().split('T')[0];
+  i.last = localDateStr();
 
   if (API_CONNECTED) {
     await apiPost('/api/inventory/update', { id: i.id, stock: newStock }).catch(() => null);
@@ -3121,7 +3143,7 @@ async function confirmEditStock(id){
   i.minQty = i.min;
   i.price = parseFloat(document.getElementById('ei-price').value) || 0;
   i.cost = i.price;
-  i.last = new Date().toISOString().split('T')[0];
+  i.last = localDateStr();
 
   await saveToLocal();
   closeModal();
@@ -3181,7 +3203,7 @@ async function saveStock(){
     minQty: minQty,
     price: cost,
     cost: cost,
-    last: new Date().toISOString().split('T')[0]
+    last: localDateStr()
   });
   await saveToLocal();
   closeModal();
@@ -3191,7 +3213,7 @@ async function saveStock(){
 
 // ── EMPLOYEES ──
 function renderEmployees(){
-  const today=new Date().toISOString().split('T')[0];
+  const today=localDateStr();
   const totalSalary=employees.reduce((a,e)=>a+e.salary,0);
   const totalAdvances=employees.reduce((a,e)=>a+(e.advances||[]).reduce((b,adv)=>b+adv.remaining,0),0);
   const paidThisMonth=employees.filter(e=>(e.salaryPayments||[]).some(p=>p.month===getCurrentMonth())).length;
@@ -3249,7 +3271,7 @@ function renderEmpList(){
 }
 
 function renderEmpAttendance(){
-  const today=new Date().toISOString().split('T')[0];
+  const today=localDateStr();
   return `
   <div class="card card-gold" style="margin-bottom:1rem">
     <h3>📅 Mark Attendance — ${new Date().toLocaleDateString('en-PK',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</h3>
@@ -3370,7 +3392,7 @@ function openPaySalary(id){
   </div>
   <div class="form-row">
     <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Amount (Rs)</label><input class="input-field" style="width:100%" id="ps-amount" type="number" value="${remaining}" placeholder="${e.salary}"></div>
-    <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Payment Date</label><input class="input-field" style="width:100%" id="ps-date" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+    <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Payment Date</label><input class="input-field" style="width:100%" id="ps-date" type="date" value="${localDateStr()}"></div>
   </div>
   <div class="form-row">
     <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Payment Method</label><select class="input-field" style="width:100%" id="ps-method"><option>Cash</option><option>Bank Transfer</option><option>Cheque</option></select></div>
@@ -3400,7 +3422,7 @@ function openAdvance(id){
   <p style="font-size:.82rem;color:var(--text2);margin-bottom:1rem">Record an advance payment against salary</p>
   <div class="form-row">
     <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Advance Amount (Rs)</label><input class="input-field" style="width:100%" id="adv-amount" type="number" placeholder="5000"></div>
-    <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Date</label><input class="input-field" style="width:100%" id="adv-date" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+    <div><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Date</label><input class="input-field" style="width:100%" id="adv-date" type="date" value="${localDateStr()}"></div>
   </div>
   <div style="margin-bottom:.75rem"><label style="font-size:.8rem;color:var(--text2);margin-bottom:.3rem;display:block">Reason</label><input class="input-field" style="width:100%" id="adv-reason" placeholder="Medical, House Rent, Emergency..."></div>
   <div class="modal-footer"><button class="btn-outline" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="saveAdvance(${id})">Record Advance</button></div>`);
@@ -3529,8 +3551,8 @@ function purgeLastTwoDaysData() {
 
 async function confirmPurgeLastTwoDaysData(silent = false) {
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const todayStr = localDateStr();
+    const yesterdayStr = localDateStr(new Date(Date.now() - 86400000));
 
     // Filter out salesLedger transactions from today and yesterday
     salesLedger = salesLedger.filter(s => s.date !== todayStr && s.date !== yesterdayStr);
@@ -3539,10 +3561,8 @@ async function confirmPurgeLastTwoDaysData(silent = false) {
     orders = orders.filter(o => o.time && !o.time.includes(todayStr) && !o.time.includes(yesterdayStr));
     unpaidBills = {};
 
-    // Save updated data to SQLite and server
-    await saveToLocal();
-
-    // Delete from Supabase Cloud DB if connected
+    // Delete from Supabase Cloud DB first — reloads merge cloud sales back in,
+    // so the cloud copy must be gone before the local save.
     if (supabaseClient) {
       try {
         await supabaseClient.from('sales_ledger').delete().in('date', [todayStr, yesterdayStr]);
@@ -3552,6 +3572,12 @@ async function confirmPurgeLastTwoDaysData(silent = false) {
         console.warn('Supabase purge error:', e);
       }
     }
+
+    // Re-apply in case a background reload restored them while awaiting the cloud
+    salesLedger = salesLedger.filter(s => s.date !== todayStr && s.date !== yesterdayStr);
+
+    // Save updated data to SQLite and server
+    await saveToLocal();
 
     if (!silent) {
       closeModal();
@@ -3571,18 +3597,18 @@ function switchFinanceTab(tab){
 
 function renderFinanceOverview(){
   // ── Live computed stats from real salesLedger & expenseLedger ──
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   // Week: Mon–Sun of current week
   const now = new Date();
   const dayOfWeek = now.getDay(); // 0=Sun
   const monday = new Date(now); monday.setDate(now.getDate() - (dayOfWeek===0?6:dayOfWeek-1)); monday.setHours(0,0,0,0);
-  const monday_str = monday.toISOString().split('T')[0];
+  const monday_str = localDateStr(monday);
   // Month: first day of current month
   const month_str = today.slice(0,7); // 'YYYY-MM'
 
-  const todaySales  = salesLedger.filter(s=>s.date===today).reduce((a,s)=>a+s.total,0);
-  const weekSales   = salesLedger.filter(s=>s.date>=monday_str&&s.date<=today).reduce((a,s)=>a+s.total,0);
-  const monthSales  = salesLedger.filter(s=>s.date.startsWith(month_str)).reduce((a,s)=>a+s.total,0);
+  const todaySales  = salesLedger.filter(s=>s.date===today).reduce((a,s)=>a+saleTotal(s),0);
+  const weekSales   = salesLedger.filter(s=>s.date>=monday_str&&s.date<=today).reduce((a,s)=>a+saleTotal(s),0);
+  const monthSales  = salesLedger.filter(s=>s.date.startsWith(month_str)).reduce((a,s)=>a+saleTotal(s),0);
 
   // Expenses this month: expenseLedger + petty cash
   const monthExp    = expenseLedger.filter(e=>e.date.startsWith(month_str)).reduce((a,e)=>a+e.amount,0);
@@ -3594,9 +3620,9 @@ function renderFinanceOverview(){
   const last7 = [];
   for(let i=6;i>=0;i--){
     const d=new Date(now); d.setDate(now.getDate()-i);
-    const ds=d.toISOString().split('T')[0];
+    const ds=localDateStr(d);
     const dayName=d.toLocaleDateString('en-PK',{weekday:'short'});
-    const total=salesLedger.filter(s=>s.date===ds).reduce((a,s)=>a+s.total,0);
+    const total=salesLedger.filter(s=>s.date===ds).reduce((a,s)=>a+saleTotal(s),0);
     last7.push({ds,dayName,total});
   }
   const maxBar=Math.max(...last7.map(d=>d.total),1);
@@ -3688,7 +3714,7 @@ function buildDateReportHTML(from,to){
   const expenses=expenseLedger.filter(e=>e.date>=from&&e.date<=to);
   const petty=pettyCash.filter(p=>p.date>=from&&p.date<=to);
 
-  const totalRevenue=sales.reduce((a,s)=>a+s.total,0);
+  const totalRevenue=sales.reduce((a,s)=>a+saleTotal(s),0);
   const totalExpenses=expenses.reduce((a,e)=>a+e.amount,0);
   const totalPetty=petty.reduce((a,p)=>a+p.amount,0);
   const totalAllExp=totalExpenses+totalPetty;
@@ -3699,12 +3725,12 @@ function buildDateReportHTML(from,to){
   sales.forEach(s=>{
     if(!byDate[s.date])byDate[s.date]={sales:[],total:0};
     byDate[s.date].sales.push(s);
-    byDate[s.date].total+=s.total;
+    byDate[s.date].total+=saleTotal(s);
   });
   const sortedDates=Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
 
   const payBreakdown={};
-  sales.forEach(s=>{payBreakdown[s.payment]=(payBreakdown[s.payment]||0)+s.total;});
+  sales.forEach(s=>{payBreakdown[s.payment]=(payBreakdown[s.payment]||0)+saleTotal(s);});
 
   const itemTotals={};
   sales.forEach(s=>s.items.forEach(i=>{itemTotals[i.name]=(itemTotals[i.name]||0)+(i.qty*i.price);}));
@@ -3820,7 +3846,7 @@ function buildDateReportHTML(from,to){
               <td style="color:var(--text2);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.items.map(i=>`${i.qty}× ${i.name}`).join(', ')}</td>
               <td><span style="background:rgba(74,144,217,.12);color:var(--blue);border-radius:4px;padding:.1rem .45rem;font-size:.7rem">${s.payment}</span></td>
               <td style="color:var(--text2)">${s.waiter}</td>
-              <td style="text-align:right;font-weight:700;color:var(--gold)">Rs ${s.total.toLocaleString()}</td>
+              <td style="text-align:right;font-weight:700;color:var(--gold)">Rs ${saleTotal(s).toLocaleString()}</td>
             </tr>`).join('')}
           </tbody>
         </table>
@@ -3839,7 +3865,7 @@ const PETTY_CATS = {
 
 function renderPettyCash(){
   const filtered = pettyCashFilter==='All' ? pettyCash : pettyCash.filter(e=>e.category===pettyCashFilter);
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   const todayTotal = pettyCash.filter(e=>e.date===todayStr).reduce((a,e)=>a+e.amount,0);
   const weekTotal = pettyCash.reduce((a,e)=>a+e.amount,0); // simplified: all sample data
   const byCategory = Object.keys(PETTY_CATS).map(cat=>({cat,total:pettyCash.filter(e=>e.category===cat).reduce((a,e)=>a+e.amount,0)}));
@@ -4513,11 +4539,16 @@ async function saveToLocal() {
 
       // Sales Ledger
       if (salesLedger && salesLedger.length > 0) {
+        const uploadedIds = salesLedger.map(s => String(s.id));
         promises.push(supabaseClient.from('sales_ledger').upsert(salesLedger.map(s => ({
-          id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: s.total || 0,
+          id: String(s.id), date: s.date || '', table_id: s.table ?? null, items: s.items || [], total: saleTotal(s),
           payment: s.payment || '', waiter: s.waiter || '', discount: s.discount || 0, per_head: s.perHead || 0,
           order_type: s.orderType || 'Dine-in', customer_phone: s.customerPhone || '', customer_address: s.customerAddress || ''
-        }))));
+        }))).then(res => {
+          if (res && res.error) console.warn('Sales ledger cloud sync failed:', res.error);
+          else uploadedIds.forEach(id => pendingSaleIds.delete(id));
+          return res;
+        }));
       }
 
       // Expense Ledger
@@ -4541,6 +4572,7 @@ async function saveToLocal() {
 async function loadFromLocal() {
   try {
     let loadedFromCentral = false;
+    const pendingSales = salesLedger.filter(s => pendingSaleIds.has(String(s.id)));
 
     // 1. Electron SQLite (Desktop app mode)
     if (window.api && window.api.isDbEmpty) {
@@ -4566,7 +4598,7 @@ async function loadFromLocal() {
         if (Array.isArray(inv)) inventory      = inv;
         if (Array.isArray(emp)) employees      = emp;
         if (Array.isArray(pc))  pettyCash      = pc;
-        if (Array.isArray(sl))  salesLedger    = sl;
+        if (Array.isArray(sl))  salesLedger    = mergeSales(sl, pendingSales);
         if (Array.isArray(el))  expenseLedger  = el;
         if (Array.isArray(mi))  menuItems      = mi;
         if (Array.isArray(mc))  menuCategories = mc;
@@ -4599,7 +4631,7 @@ async function loadFromLocal() {
         if (Array.isArray(d.inventory)) inventory      = d.inventory;
         if (Array.isArray(d.employees)) employees      = d.employees;
         if (Array.isArray(d.pettyCash)) pettyCash      = d.pettyCash;
-        if (Array.isArray(d.salesLedger)) salesLedger  = d.salesLedger;
+        if (Array.isArray(d.salesLedger)) salesLedger  = mergeSales(d.salesLedger, pendingSales);
         if (Array.isArray(d.expenseLedger)) expenseLedger = d.expenseLedger;
         if (Array.isArray(d.menuItems)) menuItems      = d.menuItems;
         if (Array.isArray(d.menuCategories)) menuCategories = d.menuCategories;
@@ -4713,11 +4745,13 @@ async function loadFromLocal() {
       }
 
       if (Array.isArray(cloudSales) && cloudSales.length > 0) {
-        salesLedger = cloudSales.map(r => ({
-          id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: r.total, payment: r.payment, waiter: r.waiter,
+        // Merge instead of replace: sales saved locally but not yet in the cloud
+        // (failed/slow upload) must survive; the next save pushes them up.
+        salesLedger = mergeSales(cloudSales.map(r => ({
+          id: r.id, date: r.date, table: r.table_id, items: r.items || [], total: Number(r.total) || 0, payment: r.payment, waiter: r.waiter,
           discount: r.discount || 0, perHead: r.per_head || 0, orderType: r.order_type || 'Dine-in',
           customerPhone: r.customer_phone || '', customerAddress: r.customer_address || ''
-        }));
+        })), mergeSales(salesLedger, pendingSales));
       }
 
       if (Array.isArray(cloudExp) && cloudExp.length > 0) {
