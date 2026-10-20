@@ -740,12 +740,15 @@ function isLicenseUnlocked(){
   catch(e) { return false; }
 }
 
-function applyLicenseLock(){
+// The sign-in form shows normally; the payment screen replaces it only when
+// someone tries to sign in (showPaymentScreen = true) on a locked install.
+function applyLicenseLock(showPaymentScreen = false){
   const locked = !isLicenseUnlocked();
   const lic = document.getElementById('license-card');
   const login = document.getElementById('login-card');
-  if (lic) lic.style.display = locked ? 'block' : 'none';
-  if (login) login.style.display = locked ? 'none' : 'block';
+  const showLock = locked && showPaymentScreen;
+  if (lic) lic.style.display = showLock ? 'block' : 'none';
+  if (login) login.style.display = showLock ? 'none' : 'block';
   const contact = document.getElementById('license-contact');
   if (contact && LICENSE_CONTACT) { contact.textContent = LICENSE_CONTACT; contact.style.display = 'block'; }
   if (locked) {
@@ -773,14 +776,18 @@ function submitLicenseCode(){
 }
 
 if (document.readyState === 'loading') {
-  window.addEventListener('DOMContentLoaded', applyLicenseLock);
+  window.addEventListener('DOMContentLoaded', () => applyLicenseLock());
 } else {
   applyLicenseLock();
 }
 
 // ── LOGIN ──
 async function doLogin(){
-  if (!applyLicenseLock()) { toast('Software is locked — payment required', 'error'); return; }
+  if (!isLicenseUnlocked()) {
+    applyLicenseLock(true);
+    toast('Software is locked — payment required', 'error');
+    return;
+  }
   try {
     await loadAppUsers();
     const uInput = (document.getElementById('username')?.value || '').trim();
